@@ -1,0 +1,3317 @@
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 1 - 1
+
+
+				;	8080 instruction executor for x86 Rev. 1.00
+				;
+				;	Copyright (C) 2024 by Gazelle
+				;
+				;Permission is hereby granted, free of charge, to any person
+				;obtaining a copy of this software and associated documentation
+				;files (the "Software"), to deal in the Software without
+				;restriction, including without limitation the rights to use,
+				;copy, modify, merge, publish, distribute, sublicense, and/or sell
+				;copies of the Software, and to permit persons to whom the
+				;Software is furnished to do so, subject to the following
+				;conditions:
+				;
+				;The above copyright notice and this permission notice shall be
+				;included in all copies or substantial portions of the Software.
+				;
+				;THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+				;EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES
+				;OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+				;NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT
+				;HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
+				;WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+				;FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
+				;OTHER DEALINGS IN THE SOFTWARE.
+
+				;Repository https://github.com/Gazelle8087/8080-instruction-executor-for-x86
+				;
+				;2024/8/22 Rev. 1.00 Initial release
+
+					page 66,78
+					.model	small
+ 0000					.code
+
+					assume	ds:nothing,es:nothing,ss:nothi
+				ng
+
+				;-------------------------------------
+				;temp	equ	cx
+ = dx				temp	equ	dx
+				;-------------------------------------
+				;
+				;	Entry point : nnnn:0e0h (far call)
+				;;	DS must point base of 8080 instruction
+				 code area
+				;
+				;	return condition
+				;
+				;	SI have the address where the code her
+				e under was fetched.
+				;	BP have the return code corresponding 
+				to the code here under.
+				;
+				;	1	HLT
+				;	2	OUT (n),A
+				;	3	IN  A,(n)
+				;	7	undefined code (1 bytes)
+				;
+				;	register assign
+				;
+				;	A    : al
+				;	flag : ah
+				;	B    : ch
+				;	C    : cl
+				;	D    : dh
+				;	E    : dl
+				;	H    : bh
+				;	L    : bl
+				;	PC   : si
+				;	SP   : di
+				;
+				;---------------------------------------------
+				--
+ = 0001				code_HLT	equ	1
+ = 0002				code_OUT	equ	2
+ = 0003				code_IN		equ	3
+ = 0007				code_undef1	equ	7
+
+				ifidni		temp,<dx>
+ = dh				temp_h		equ	dh
+ = dl				temp_l		equ	dl
+ = cx				BC		equ	cx
+ = bp				DE		equ	bp
+				elseifidni	temp,<cx>
+				endif
+				;---------------------------------------------
+				--
+ = si				PC80		equ	si
+ = di				SP80		equ	di
+ = ax				AF		equ	ax
+ = bx				HL		equ	bx
+
+ = ch				B		equ	ch
+ = cl				C_reg		equ	cl
+ = dh				D		equ	dh
+ = dl				E		equ	dl
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 2 - 1
+
+
+ = bh				H		equ	bh
+ = bl				L		equ	bl
+ = byte ptr ds:[HL]		M		equ	byte ptr ds:[HL]
+ = al				A		equ	al
+
+				;======================================
+						org	0e0h
+ 00E0				entry:
+ 00E0  8B EA					mov	bp,temp
+ 00E2  FC					cld
+ 00E3  8A 34					mov	temp_h,ds:[PC80]
+ 00E5  B2 00					mov	temp_l,0
+ 00E7  46					inc	PC80
+ 00E8  FF E2					jmp	temp
+
+				;======================================
+				fetch1		macro
+						mov	temp_h,ds:[PC80]
+						inc	PC80
+						jmp	temp
+				endm
+
+				fetch2		macro
+						inc	PC80
+						mov	temp_h,ds:[PC80]
+						inc	PC80
+						jmp	temp
+				endm
+
+				fetch3		macro
+						mov	temp_h,ds:[PC80+2]
+						add	PC80,3
+						jmp	temp
+				endm
+
+				;======= M1 cycle ============================
+				===
+
+				;--- LD	reg16,imm16
+				LXI		macro	dst
+						mov	dst,ds:[PC80]
+						fetch3
+				endm
+
+				;--- LD	reg8,imm8
+				MVI		macro	dst
+				ifidni	dst,temp_h
+						mov	temp,bp
+						mov	dst,ds:[PC80]
+						mov	bp,temp
+						mov	temp_l,0
+				elseifidni	dst,temp_l
+						mov	temp,bp
+						mov	dst,ds:[PC80]
+						mov	bp,temp
+						mov	temp_l,0
+				else
+						mov	dst,ds:[PC80]
+				endif
+						fetch2
+				endm
+
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 3 - 1
+
+
+				;--- INC reg16
+				INX		macro	src
+						inc	src
+						fetch1
+				endm
+
+				;--- DEC reg16
+				DCX		macro	src
+						dec	src
+						fetch1
+				endm
+
+				;--- INC reg8
+				INR		macro	src
+
+						sahf
+
+				ifidni		src,temp_h
+
+						mov	temp,bp
+						inc	src
+						mov	bp,temp
+						mov	temp_l,0
+
+				elseifidni	src,temp_l
+
+						mov	temp,bp
+						inc	src
+						mov	bp,temp
+						mov	temp_l,0
+				else
+						inc	src
+				endif
+						lahf
+						fetch1
+				endm
+
+				;--- DEC reg8
+				DCR		macro	src
+
+						sahf
+
+				ifidni		src,temp_h
+
+						mov	temp,bp
+						dec	src
+						mov	bp,temp
+						mov	temp_l,0
+
+				elseifidni	src,temp_l
+
+						mov	temp,bp
+						dec	src
+						mov	bp,temp
+						mov	temp_l,0
+				else
+						dec	src
+				endif
+						lahf
+						fetch1
+				endm
+
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 4 - 1
+
+
+				;--- ADD HL,reg16
+				ADDHL		macro	src
+						ror	ah,1
+						add	HL,src
+						rcl	ah,1
+						fetch1
+				endm
+
+				;--- LD ??,??
+				LD		macro	dst,src
+
+				ifidni		dst,src
+
+				elseifidni	dst,temp_h
+
+						mov	temp,bp
+						mov	dst,src
+						mov	bp,temp
+						mov	temp_l,0
+
+				elseifidni	dst,temp_l
+
+						mov	temp,bp
+						mov	dst,src
+						mov	bp,temp
+						mov	temp_l,0
+
+				elseifidni	src,temp_h
+
+						mov	temp,bp
+						mov	dst,src
+						mov	temp_l,0
+
+				elseifidni	src,temp_l
+
+						mov	temp,bp
+						mov	dst,src
+						mov	temp_l,0
+				else
+						mov	dst,src
+				endif
+						fetch1
+				endm
+
+				;--- ADD A,reg8
+				ADD8	macro	src
+				ifidni	src,temp_h
+
+						mov	temp,bp
+						add	A,src
+						mov	temp_l,0
+
+				elseifidni	src,temp_l
+
+						mov	temp,bp
+						add	A,src
+						mov	temp_l,0
+				else
+						add	A,src
+				endif
+						lahf
+						fetch1
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 5 - 1
+
+
+				endm
+
+				;--- ADC A,reg8
+				ADC8		macro	src
+
+						sahf
+
+				ifidni		src,temp_h
+
+						mov	temp,bp
+						adc	A,src
+						mov	temp_l,0
+
+				elseifidni	src,temp_l
+
+						mov	temp,bp
+						adc	A,src
+						mov	temp_l,0
+				else
+						adc	A,src
+				endif
+						lahf
+						fetch1
+				endm
+
+				;---  SUB reg8
+				SUB8	macro	src
+				ifidni		src,temp_h
+
+						mov	temp,bp
+						sub	A,src
+						mov	temp_l,0
+
+				elseifidni	src,temp_l
+
+						mov	temp,bp
+						sub	A,src
+						mov	temp_l,0
+				else
+						sub	A,src
+				endif
+						lahf
+						fetch1
+				endm
+
+				;---  SBC A,reg8
+				SBC8	macro	src
+
+						sahf
+
+				ifidni		src,temp_h
+
+						mov	temp,bp
+						sbb	A,src
+						mov	temp_l,0
+
+				elseifidni	src,temp_l
+
+						mov	temp,bp
+						sbb	A,src
+						mov	temp_l,0
+				else
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 6 - 1
+
+
+						sbb	A,src
+				endif
+						lahf
+						fetch1
+				endm
+
+				;--- AND reg8
+				ANA	macro	src
+				ifidni		src,temp_h
+
+						mov	temp,bp
+						and	A,src
+						mov	temp_l,0
+
+				elseifidni	src,temp_l
+
+						mov	temp,bp
+						and	A,src
+						mov	temp_l,0
+				else
+						and	A,src
+				endif
+						lahf
+						fetch1
+				endm
+
+				;---  OR reg8
+				ORA	macro	src
+				ifidni		src,temp_h
+
+						mov	temp,bp
+						or	A,src
+						mov	temp_l,0
+
+				elseifidni	src,temp_l
+
+						mov	temp,bp
+						or	A,src
+						mov	temp_l,0
+				else
+						or	A,src
+				endif
+						lahf
+						fetch1
+				endm
+
+				;--- XOR reg8
+				XRA	macro	src
+				ifidni		src,temp_h
+
+						mov	temp,bp
+						xor	A,src
+						mov	temp_l,0
+
+				elseifidni	src,temp_l
+
+						mov	temp,bp
+						xor	A,src
+						mov	temp_l,0
+				else
+						xor	A,src
+				endif
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 7 - 1
+
+
+						lahf
+						fetch1
+				endm
+
+				;--- CP reg8
+				CPA	macro	src
+				ifidni		src,temp_h
+
+						mov	temp,bp
+						cmp	A,src
+						mov	temp_l,0
+
+				elseifidni	src,temp_l
+
+						mov	temp,bp
+						cmp	A,src
+						mov	temp_l,0
+				else
+						cmp	A,src
+				endif
+						lahf
+						fetch1
+				endm
+
+				;--- CALL cc,nn
+				CALL80		macro	cc
+						add	PC80,2
+				ifnb		<cc>
+						sahf
+						j&cc	@f
+						fetch1
+				@@:
+				endif
+						sub	SP80,2
+						mov	ds:[SP80],PC80
+						mov	PC80,ds:[PC80-2]
+						fetch1
+				endm
+
+				;--- JP cc,nn
+				JP80		macro	cc
+				ifnb		<cc>
+						sahf
+						j&cc	@f
+						fetch3
+				@@:
+				endif
+						mov	PC80,ds:[PC80]
+						fetch1
+				endm
+
+				;--- RET cc
+				RET80		macro	cc
+				ifnb		<cc>
+						sahf
+						j&cc	@f
+						fetch1
+				@@:
+				endif
+						mov	PC80,ds:[SP80]
+						add	SP80,2
+						fetch1
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 8 - 1
+
+
+				endm
+
+				;--- RST n
+				RST		macro	nn
+						sub	SP80,2
+						mov	ds:[SP80],PC80
+						mov	PC80,nn
+						fetch1
+				endm
+
+				;---  PUSH reg16
+				PUSH8		macro	src
+						sub	SP80,2
+				ifidni		src,AF
+						xchg	ah,al
+						mov	ds:[SP80],src
+						xchg	ah,al
+				else
+						mov	ds:[SP80],src
+				endif
+						fetch1
+				endm
+
+				;--- POP reg16
+				POP8		macro	dst
+						mov	dst,ds:[SP80]
+				ifidni		dst,AF
+						xchg	ah,al
+				endif
+						add	SP80,2
+						fetch1
+				endm
+
+				;======================================
+ = 0000				op2	=	0
+
+				M1	macro	nn
+					rept	nn - op2
+						org	op2 * 100h
+						mov	temp,bp
+						mov	bp,code_undef1
+						retf
+						op2	= op2 + 1
+					endm
+					op2	= nn + 1
+					org	nn * 100h
+				endm
+
+				M1	00				;NOP
+ = 0001			     1		op2	= 00 + 1
+ 0000				no_op:
+						fetch1
+ 0000  8A 34		     1			mov	temp_h,ds:[PC80]
+ 0002  46		     1			inc	PC80
+ 0003  FF E2		     1			jmp	temp
+
+ 0005 0D 0A 38 30 38 30		exe_msg		db	0dh,0ah,'8080 instruct
+       20 69 6E 73 74 72	ion executor for x86 Rev. 1.00  ',0dh,0ah
+       75 63 74 69 6F 6E
+       20 65 78 65 63 75
+       74 6F 72 20 66 6F
+       72 20 78 38 36 20
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 9 - 1
+
+
+       52 65 76 2E 20 31
+       2E 30 30 20 20 0D
+       0A
+ 0036  43 6F 70 79 72 69			db	'Copyright (c) 2024 by
+       67 68 74 20 28 63	 Gazelle.  ',0dh,0ah
+       29 20 32 30 32 34
+       20 62 79 20 47 61
+       7A 65 6C 6C 65 2E
+       20 20 0D 0A
+ 0058  68 74 74 70 73 3A			db	'https://github.com/Ga
+       2F 2F 67 69 74 68	zelle8087  ',0dh,0ah,24h
+       75 62 2E 63 6F 6D
+       2F 47 61 7A 65 6C
+       6C 65 38 30 38 37
+       20 20 0D 0A 24
+
+				M1	01				;LD	
+				BC,nn
+ = 0002			     1		op2	= 01 + 1
+						LXI	BC
+ 0100  8B 0C		     1			mov	BC,ds:[PC80]
+ 0102  8A 74 02		     2			mov	temp_h,ds:[PC80+2]
+ 0105  83 C6 03		     2			add	PC80,3
+ 0108  FF E2		     2			jmp	temp
+
+				M1	02				;LD	
+				(BC),A
+ = 0003			     1		op2	= 02 + 1
+				ifidni		BC,<bp>
+				else
+ 0200  8B D7					mov	temp,di
+ 0202  8B F9					mov	di,BC
+ 0204  88 05					mov	ds:[di],A
+ 0206  8B FA					mov	di,temp
+ 0208  B2 00					mov	temp_l,0
+						fetch1
+ 020A  8A 34		     1			mov	temp_h,ds:[PC80]
+ 020C  46		     1			inc	PC80
+ 020D  FF E2		     1			jmp	temp
+				endif
+
+				M1	03				;INC	
+				BC
+ = 0004			     1		op2	= 03 + 1
+						INX	BC
+ 0300  41		     1			inc	BC
+ 0301  8A 34		     2			mov	temp_h,ds:[PC80]
+ 0303  46		     2			inc	PC80
+ 0304  FF E2		     2			jmp	temp
+
+				M1	04				;INC	
+				B
+ = 0005			     1		op2	= 04 + 1
+						INR	B
+ 0400  9E		     1			sahf
+ 0401  FE C5		     1			inc	B
+ 0403  9F		     1			lahf
+ 0404  8A 34		     2			mov	temp_h,ds:[PC80]
+ 0406  46		     2			inc	PC80
+ 0407  FF E2		     2			jmp	temp
+
+				M1	05				;DEC	
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 10 - 1
+
+
+				B
+ = 0006			     1		op2	= 05 + 1
+						DCR	B
+ 0500  9E		     1			sahf
+ 0501  FE CD		     1			dec	B
+ 0503  9F		     1			lahf
+ 0504  8A 34		     2			mov	temp_h,ds:[PC80]
+ 0506  46		     2			inc	PC80
+ 0507  FF E2		     2			jmp	temp
+
+				M1	06				;LD	
+				B,n
+ = 0007			     1		op2	= 06 + 1
+						MVI	B
+ 0600  8A 2C		     1			mov	B,ds:[PC80]
+ 0602  46		     2			inc	PC80
+ 0603  8A 34		     2			mov	temp_h,ds:[PC80]
+ 0605  46		     2			inc	PC80
+ 0606  FF E2		     2			jmp	temp
+
+				M1	07				;RLCA
+ = 0008			     1		op2	= 07 + 1
+ 0700  9E					sahf
+ 0701  D0 C0					rol	A,1
+ 0703  9F					lahf
+						fetch1
+ 0704  8A 34		     1			mov	temp_h,ds:[PC80]
+ 0706  46		     1			inc	PC80
+ 0707  FF E2		     1			jmp	temp
+
+				M1	09				;ADD	
+				HL,BC
+ 0800  8B D5		     2			mov	temp,bp
+ 0802  BD 0007		     2			mov	bp,code_undef1
+ 0805  CB		     2			retf
+ = 0009			     2			op2	= op2 + 1
+ = 000A			     1		op2	= 09 + 1
+						ADDHL	BC
+ 0900  D0 CC		     1			ror	ah,1
+ 0902  03 D9		     1			add	HL,BC
+ 0904  D0 D4		     1			rcl	ah,1
+ 0906  8A 34		     2			mov	temp_h,ds:[PC80]
+ 0908  46		     2			inc	PC80
+ 0909  FF E2		     2			jmp	temp
+
+				M1	0AH				;LD	
+				A,(BC)
+ = 000B			     1		op2	= 0AH + 1
+				ifidni		BC,<bp>
+				else
+ 0A00  8B D7					mov	temp,di
+ 0A02  8B F9					mov	di,BC
+ 0A04  8A 05					mov	A,ds:[di]
+ 0A06  8B FA					mov	di,temp
+ 0A08  B2 00					mov	temp_l,0
+						fetch1
+ 0A0A  8A 34		     1			mov	temp_h,ds:[PC80]
+ 0A0C  46		     1			inc	PC80
+ 0A0D  FF E2		     1			jmp	temp
+				endif
+
+				M1	0BH				;DEC	
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 11 - 1
+
+
+				BC
+ = 000C			     1		op2	= 0BH + 1
+						DCX	BC
+ 0B00  49		     1			dec	BC
+ 0B01  8A 34		     2			mov	temp_h,ds:[PC80]
+ 0B03  46		     2			inc	PC80
+ 0B04  FF E2		     2			jmp	temp
+
+				M1	0CH				;INC	
+				C_reg
+ = 000D			     1		op2	= 0CH + 1
+						INR	C_reg
+ 0C00  9E		     1			sahf
+ 0C01  FE C1		     1			inc	C_reg
+ 0C03  9F		     1			lahf
+ 0C04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 0C06  46		     2			inc	PC80
+ 0C07  FF E2		     2			jmp	temp
+
+				M1	0DH				;DEC	
+				C_reg
+ = 000E			     1		op2	= 0DH + 1
+						DCR	C_reg
+ 0D00  9E		     1			sahf
+ 0D01  FE C9		     1			dec	C_reg
+ 0D03  9F		     1			lahf
+ 0D04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 0D06  46		     2			inc	PC80
+ 0D07  FF E2		     2			jmp	temp
+
+				M1	0EH				;LD	
+				C,n
+ = 000F			     1		op2	= 0EH + 1
+						MVI	C_reg
+ 0E00  8A 0C		     1			mov	C_reg,ds:[PC80]
+ 0E02  46		     2			inc	PC80
+ 0E03  8A 34		     2			mov	temp_h,ds:[PC80]
+ 0E05  46		     2			inc	PC80
+ 0E06  FF E2		     2			jmp	temp
+
+				M1	0FH				;RRCA
+ = 0010			     1		op2	= 0FH + 1
+ 0F00  9E					sahf
+ 0F01  D0 C8					ror	A,1
+ 0F03  9F					lahf
+						fetch1
+ 0F04  8A 34		     1			mov	temp_h,ds:[PC80]
+ 0F06  46		     1			inc	PC80
+ 0F07  FF E2		     1			jmp	temp
+
+				M1	11h				;LD	
+				DE,nn
+ 1000  8B D5		     2			mov	temp,bp
+ 1002  BD 0007		     2			mov	bp,code_undef1
+ 1005  CB		     2			retf
+ = 0011			     2			op2	= op2 + 1
+ = 0012			     1		op2	= 11h + 1
+						LXI	DE
+ 1100  8B 2C		     1			mov	DE,ds:[PC80]
+ 1102  8A 74 02		     2			mov	temp_h,ds:[PC80+2]
+ 1105  83 C6 03		     2			add	PC80,3
+ 1108  FF E2		     2			jmp	temp
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 12 - 1
+
+
+
+				M1	12H				;LD	
+				(DE),A
+ = 0013			     1		op2	= 12H + 1
+				ifidni		DE,<bp>
+ 1200  3E: 88 46 00				mov	ds:[DE],A
+						fetch1
+ 1204  8A 34		     1			mov	temp_h,ds:[PC80]
+ 1206  46		     1			inc	PC80
+ 1207  FF E2		     1			jmp	temp
+				else
+				endif
+
+				M1	13H				;INC	
+				DE
+ = 0014			     1		op2	= 13H + 1
+						INX	DE
+ 1300  45		     1			inc	DE
+ 1301  8A 34		     2			mov	temp_h,ds:[PC80]
+ 1303  46		     2			inc	PC80
+ 1304  FF E2		     2			jmp	temp
+
+				M1	14H				;INC	
+				D
+ = 0015			     1		op2	= 14H + 1
+						INR	D
+ 1400  9E		     1			sahf
+ 1401  8B D5		     1			mov	temp,bp
+ 1403  FE C6		     1			inc	D
+ 1405  8B EA		     1			mov	bp,temp
+ 1407  B2 00		     1			mov	temp_l,0
+ 1409  9F		     1			lahf
+ 140A  8A 34		     2			mov	temp_h,ds:[PC80]
+ 140C  46		     2			inc	PC80
+ 140D  FF E2		     2			jmp	temp
+
+				M1	15H				;DEC	
+				D
+ = 0016			     1		op2	= 15H + 1
+						DCR	D
+ 1500  9E		     1			sahf
+ 1501  8B D5		     1			mov	temp,bp
+ 1503  FE CE		     1			dec	D
+ 1505  8B EA		     1			mov	bp,temp
+ 1507  B2 00		     1			mov	temp_l,0
+ 1509  9F		     1			lahf
+ 150A  8A 34		     2			mov	temp_h,ds:[PC80]
+ 150C  46		     2			inc	PC80
+ 150D  FF E2		     2			jmp	temp
+
+				M1	16H				;LD	
+				D,n
+ = 0017			     1		op2	= 16H + 1
+						MVI	D
+ 1600  8B D5		     1			mov	temp,bp
+ 1602  8A 34		     1			mov	D,ds:[PC80]
+ 1604  8B EA		     1			mov	bp,temp
+ 1606  B2 00		     1			mov	temp_l,0
+ 1608  46		     2			inc	PC80
+ 1609  8A 34		     2			mov	temp_h,ds:[PC80]
+ 160B  46		     2			inc	PC80
+ 160C  FF E2		     2			jmp	temp
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 13 - 1
+
+
+
+				M1	17H				;RLA
+ = 0018			     1		op2	= 17H + 1
+ 1700  9E					sahf
+ 1701  D0 D0					rcl	A,1
+ 1703  9F					lahf
+						fetch1
+ 1704  8A 34		     1			mov	temp_h,ds:[PC80]
+ 1706  46		     1			inc	PC80
+ 1707  FF E2		     1			jmp	temp
+
+
+				M1	19H				;ADD	
+				HL,DE
+ 1800  8B D5		     2			mov	temp,bp
+ 1802  BD 0007		     2			mov	bp,code_undef1
+ 1805  CB		     2			retf
+ = 0019			     2			op2	= op2 + 1
+ = 001A			     1		op2	= 19H + 1
+						ADDHL	DE
+ 1900  D0 CC		     1			ror	ah,1
+ 1902  03 DD		     1			add	HL,DE
+ 1904  D0 D4		     1			rcl	ah,1
+ 1906  8A 34		     2			mov	temp_h,ds:[PC80]
+ 1908  46		     2			inc	PC80
+ 1909  FF E2		     2			jmp	temp
+
+				M1	1AH				;LD	
+				A,(DE)
+ = 001B			     1		op2	= 1AH + 1
+				ifidni		DE,<bp>
+ 1A00  3E: 8A 46 00				mov	A,ds:[DE]
+						fetch1
+ 1A04  8A 34		     1			mov	temp_h,ds:[PC80]
+ 1A06  46		     1			inc	PC80
+ 1A07  FF E2		     1			jmp	temp
+				else
+				endif
+
+				M1	1BH				;DEC	
+				DE
+ = 001C			     1		op2	= 1BH + 1
+						DCX	DE
+ 1B00  4D		     1			dec	DE
+ 1B01  8A 34		     2			mov	temp_h,ds:[PC80]
+ 1B03  46		     2			inc	PC80
+ 1B04  FF E2		     2			jmp	temp
+
+				M1	1CH				;INC	
+				E
+ = 001D			     1		op2	= 1CH + 1
+						INR	E
+ 1C00  9E		     1			sahf
+ 1C01  8B D5		     1			mov	temp,bp
+ 1C03  FE C2		     1			inc	E
+ 1C05  8B EA		     1			mov	bp,temp
+ 1C07  B2 00		     1			mov	temp_l,0
+ 1C09  9F		     1			lahf
+ 1C0A  8A 34		     2			mov	temp_h,ds:[PC80]
+ 1C0C  46		     2			inc	PC80
+ 1C0D  FF E2		     2			jmp	temp
+
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 14 - 1
+
+
+				M1	1DH				;DEC	
+				E
+ = 001E			     1		op2	= 1DH + 1
+						DCR	E
+ 1D00  9E		     1			sahf
+ 1D01  8B D5		     1			mov	temp,bp
+ 1D03  FE CA		     1			dec	E
+ 1D05  8B EA		     1			mov	bp,temp
+ 1D07  B2 00		     1			mov	temp_l,0
+ 1D09  9F		     1			lahf
+ 1D0A  8A 34		     2			mov	temp_h,ds:[PC80]
+ 1D0C  46		     2			inc	PC80
+ 1D0D  FF E2		     2			jmp	temp
+
+				M1	1EH				;LD	
+				E,n
+ = 001F			     1		op2	= 1EH + 1
+						MVI	E
+ 1E00  8B D5		     1			mov	temp,bp
+ 1E02  8A 14		     1			mov	E,ds:[PC80]
+ 1E04  8B EA		     1			mov	bp,temp
+ 1E06  B2 00		     1			mov	temp_l,0
+ 1E08  46		     2			inc	PC80
+ 1E09  8A 34		     2			mov	temp_h,ds:[PC80]
+ 1E0B  46		     2			inc	PC80
+ 1E0C  FF E2		     2			jmp	temp
+
+				M1	1FH				;RRA
+ = 0020			     1		op2	= 1FH + 1
+ 1F00  9E					sahf
+ 1F01  D0 D8					rcr	A,1
+ 1F03  9F					lahf
+						fetch1
+ 1F04  8A 34		     1			mov	temp_h,ds:[PC80]
+ 1F06  46		     1			inc	PC80
+ 1F07  FF E2		     1			jmp	temp
+
+
+				M1	21H				;LD	
+				HL,nn
+ 2000  8B D5		     2			mov	temp,bp
+ 2002  BD 0007		     2			mov	bp,code_undef1
+ 2005  CB		     2			retf
+ = 0021			     2			op2	= op2 + 1
+ = 0022			     1		op2	= 21H + 1
+						LXI	HL
+ 2100  8B 1C		     1			mov	HL,ds:[PC80]
+ 2102  8A 74 02		     2			mov	temp_h,ds:[PC80+2]
+ 2105  83 C6 03		     2			add	PC80,3
+ 2108  FF E2		     2			jmp	temp
+
+				M1	22H				;LD	
+				(nn),HL
+ = 0023			     1		op2	= 22H + 1
+ 2200  8B D7					mov	temp,di
+ 2202  8B 3C					mov	di,ds:[PC80]
+ 2204  89 1D					mov	ds:[di],HL
+ 2206  8B FA					mov	di,temp
+ 2208  B2 00					mov	temp_l,0
+						fetch3
+ 220A  8A 74 02		     1			mov	temp_h,ds:[PC80+2]
+ 220D  83 C6 03		     1			add	PC80,3
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 15 - 1
+
+
+ 2210  FF E2		     1			jmp	temp
+
+				M1	23H				;INC	
+				HL
+ = 0024			     1		op2	= 23H + 1
+						INX	HL
+ 2300  43		     1			inc	HL
+ 2301  8A 34		     2			mov	temp_h,ds:[PC80]
+ 2303  46		     2			inc	PC80
+ 2304  FF E2		     2			jmp	temp
+
+				M1	24H				;INC	
+				H
+ = 0025			     1		op2	= 24H + 1
+						INR	H
+ 2400  9E		     1			sahf
+ 2401  FE C7		     1			inc	H
+ 2403  9F		     1			lahf
+ 2404  8A 34		     2			mov	temp_h,ds:[PC80]
+ 2406  46		     2			inc	PC80
+ 2407  FF E2		     2			jmp	temp
+
+				M1	25H				;DEC	
+				H
+ = 0026			     1		op2	= 25H + 1
+						DCR	H
+ 2500  9E		     1			sahf
+ 2501  FE CF		     1			dec	H
+ 2503  9F		     1			lahf
+ 2504  8A 34		     2			mov	temp_h,ds:[PC80]
+ 2506  46		     2			inc	PC80
+ 2507  FF E2		     2			jmp	temp
+
+				M1	26H				;LD	
+				H,n
+ = 0027			     1		op2	= 26H + 1
+						MVI	H
+ 2600  8A 3C		     1			mov	H,ds:[PC80]
+ 2602  46		     2			inc	PC80
+ 2603  8A 34		     2			mov	temp_h,ds:[PC80]
+ 2605  46		     2			inc	PC80
+ 2606  FF E2		     2			jmp	temp
+
+				M1	27H				;DAA	
+				*****
+ = 0028			     1		op2	= 27H + 1
+ 2700  9E					sahf
+ 2701  27					daa
+ 2702  9F					lahf
+						fetch1
+ 2703  8A 34		     1			mov	temp_h,ds:[PC80]
+ 2705  46		     1			inc	PC80
+ 2706  FF E2		     1			jmp	temp
+
+
+				M1	29H				;ADD	
+				HL,HL
+ 2800  8B D5		     2			mov	temp,bp
+ 2802  BD 0007		     2			mov	bp,code_undef1
+ 2805  CB		     2			retf
+ = 0029			     2			op2	= op2 + 1
+ = 002A			     1		op2	= 29H + 1
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 16 - 1
+
+
+						ADDHL	HL
+ 2900  D0 CC		     1			ror	ah,1
+ 2902  03 DB		     1			add	HL,HL
+ 2904  D0 D4		     1			rcl	ah,1
+ 2906  8A 34		     2			mov	temp_h,ds:[PC80]
+ 2908  46		     2			inc	PC80
+ 2909  FF E2		     2			jmp	temp
+
+				M1	2AH				;LD	
+				HL,(nn)
+ = 002B			     1		op2	= 2AH + 1
+ 2A00  8B 1C					mov	HL,ds:[PC80]
+ 2A02  8B 1F					mov	HL,ds:[HL]
+						fetch3
+ 2A04  8A 74 02		     1			mov	temp_h,ds:[PC80+2]
+ 2A07  83 C6 03		     1			add	PC80,3
+ 2A0A  FF E2		     1			jmp	temp
+
+				M1	2BH				;DEC	
+				HL
+ = 002C			     1		op2	= 2BH + 1
+						DCX	HL
+ 2B00  4B		     1			dec	HL
+ 2B01  8A 34		     2			mov	temp_h,ds:[PC80]
+ 2B03  46		     2			inc	PC80
+ 2B04  FF E2		     2			jmp	temp
+
+				M1	2CH				;INC	
+				L
+ = 002D			     1		op2	= 2CH + 1
+						INR	L
+ 2C00  9E		     1			sahf
+ 2C01  FE C3		     1			inc	L
+ 2C03  9F		     1			lahf
+ 2C04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 2C06  46		     2			inc	PC80
+ 2C07  FF E2		     2			jmp	temp
+
+				M1	2DH				;DEC	
+				L
+ = 002E			     1		op2	= 2DH + 1
+						DCR	L
+ 2D00  9E		     1			sahf
+ 2D01  FE CB		     1			dec	L
+ 2D03  9F		     1			lahf
+ 2D04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 2D06  46		     2			inc	PC80
+ 2D07  FF E2		     2			jmp	temp
+
+				M1	2EH				;LD	
+				L,n
+ = 002F			     1		op2	= 2EH + 1
+						MVI	L
+ 2E00  8A 1C		     1			mov	L,ds:[PC80]
+ 2E02  46		     2			inc	PC80
+ 2E03  8A 34		     2			mov	temp_h,ds:[PC80]
+ 2E05  46		     2			inc	PC80
+ 2E06  FF E2		     2			jmp	temp
+
+				M1	2FH				;CPL	
+				complement A
+ = 0030			     1		op2	= 2FH + 1
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 17 - 1
+
+
+ 2F00  F6 D0					not	A
+						fetch1
+ 2F02  8A 34		     1			mov	temp_h,ds:[PC80]
+ 2F04  46		     1			inc	PC80
+ 2F05  FF E2		     1			jmp	temp
+
+
+				M1	31H				;LD	
+				SP,nn
+ 3000  8B D5		     2			mov	temp,bp
+ 3002  BD 0007		     2			mov	bp,code_undef1
+ 3005  CB		     2			retf
+ = 0031			     2			op2	= op2 + 1
+ = 0032			     1		op2	= 31H + 1
+						LXI	SP80
+ 3100  8B 3C		     1			mov	SP80,ds:[PC80]
+ 3102  8A 74 02		     2			mov	temp_h,ds:[PC80+2]
+ 3105  83 C6 03		     2			add	PC80,3
+ 3108  FF E2		     2			jmp	temp
+
+				M1	32H				;LD	
+				(nn),A
+ = 0033			     1		op2	= 32H + 1
+ 3200  8B D7					mov	temp,di
+ 3202  8B 3C					mov	di,ds:[PC80]
+ 3204  88 05					mov	ds:[di],A
+ 3206  8B FA					mov	di,temp
+ 3208  B2 00					mov	temp_l,0
+						fetch3
+ 320A  8A 74 02		     1			mov	temp_h,ds:[PC80+2]
+ 320D  83 C6 03		     1			add	PC80,3
+ 3210  FF E2		     1			jmp	temp
+
+				M1	33H				;INC	
+				SP
+ = 0034			     1		op2	= 33H + 1
+						INX	SP80
+ 3300  47		     1			inc	SP80
+ 3301  8A 34		     2			mov	temp_h,ds:[PC80]
+ 3303  46		     2			inc	PC80
+ 3304  FF E2		     2			jmp	temp
+
+				M1	34H				;INC	
+				(HL)
+ = 0035			     1		op2	= 34H + 1
+						INR	M
+ 3400  9E		     1			sahf
+ 3401  FE 07		     1			inc	M
+ 3403  9F		     1			lahf
+ 3404  8A 34		     2			mov	temp_h,ds:[PC80]
+ 3406  46		     2			inc	PC80
+ 3407  FF E2		     2			jmp	temp
+
+				M1	35H				;DEC	
+				M
+ = 0036			     1		op2	= 35H + 1
+						DCR	M
+ 3500  9E		     1			sahf
+ 3501  FE 0F		     1			dec	M
+ 3503  9F		     1			lahf
+ 3504  8A 34		     2			mov	temp_h,ds:[PC80]
+ 3506  46		     2			inc	PC80
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 18 - 1
+
+
+ 3507  FF E2		     2			jmp	temp
+
+				M1	36H				;LD	
+				(HL),n
+ = 0037			     1		op2	= 36H + 1
+ 3600  8A 34					mov	temp_h,ds:[PC80]
+ 3602  88 37					mov	ds:[HL],temp_h
+						fetch2
+ 3604  46		     1			inc	PC80
+ 3605  8A 34		     1			mov	temp_h,ds:[PC80]
+ 3607  46		     1			inc	PC80
+ 3608  FF E2		     1			jmp	temp
+
+				M1	37H				;SCF	
+				set carry flag
+ = 0038			     1		op2	= 37H + 1
+ 3700  80 CC 01					or	ah,00000001b
+						fetch1
+ 3703  8A 34		     1			mov	temp_h,ds:[PC80]
+ 3705  46		     1			inc	PC80
+ 3706  FF E2		     1			jmp	temp
+
+
+				M1	39H				;ADD	
+				HL,SP
+ 3800  8B D5		     2			mov	temp,bp
+ 3802  BD 0007		     2			mov	bp,code_undef1
+ 3805  CB		     2			retf
+ = 0039			     2			op2	= op2 + 1
+ = 003A			     1		op2	= 39H + 1
+						ADDHL	SP80
+ 3900  D0 CC		     1			ror	ah,1
+ 3902  03 DF		     1			add	HL,SP80
+ 3904  D0 D4		     1			rcl	ah,1
+ 3906  8A 34		     2			mov	temp_h,ds:[PC80]
+ 3908  46		     2			inc	PC80
+ 3909  FF E2		     2			jmp	temp
+
+				M1	3AH				;LD	
+				A,(nn)
+ = 003B			     1		op2	= 3AH + 1
+ 3A00  8B D7					mov	temp,di
+ 3A02  8B 3C					mov	di,ds:[PC80]
+ 3A04  8A 05					mov	A,ds:[di]
+ 3A06  8B FA					mov	di,temp
+ 3A08  B2 00					mov	temp_l,0
+						fetch3
+ 3A0A  8A 74 02		     1			mov	temp_h,ds:[PC80+2]
+ 3A0D  83 C6 03		     1			add	PC80,3
+ 3A10  FF E2		     1			jmp	temp
+
+				M1	3BH				;DEC	
+				SP
+ = 003C			     1		op2	= 3BH + 1
+						DCX	SP80
+ 3B00  4F		     1			dec	SP80
+ 3B01  8A 34		     2			mov	temp_h,ds:[PC80]
+ 3B03  46		     2			inc	PC80
+ 3B04  FF E2		     2			jmp	temp
+
+				M1	3CH				;INC	
+				A
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 19 - 1
+
+
+ = 003D			     1		op2	= 3CH + 1
+						INR	A
+ 3C00  9E		     1			sahf
+ 3C01  FE C0		     1			inc	A
+ 3C03  9F		     1			lahf
+ 3C04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 3C06  46		     2			inc	PC80
+ 3C07  FF E2		     2			jmp	temp
+
+				M1	3DH				;DEC	
+				A
+ = 003E			     1		op2	= 3DH + 1
+						DCR	A
+ 3D00  9E		     1			sahf
+ 3D01  FE C8		     1			dec	A
+ 3D03  9F		     1			lahf
+ 3D04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 3D06  46		     2			inc	PC80
+ 3D07  FF E2		     2			jmp	temp
+
+				M1	3EH				;LD	
+				A,n
+ = 003F			     1		op2	= 3EH + 1
+ 3E00  AC					lodsb
+						fetch1
+ 3E01  8A 34		     1			mov	temp_h,ds:[PC80]
+ 3E03  46		     1			inc	PC80
+ 3E04  FF E2		     1			jmp	temp
+
+				M1	3FH				;CCF	
+				complement carry flag
+ = 0040			     1		op2	= 3FH + 1
+ 3F00  80 F4 01					xor	ah,00000001b
+						fetch1
+ 3F03  8A 34		     1			mov	temp_h,ds:[PC80]
+ 3F05  46		     1			inc	PC80
+ 3F06  FF E2		     1			jmp	temp
+				;--------------------------------------
+				M1	40H
+ = 0041			     1		op2	= 40H + 1
+						LD	B,B
+ 4000  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4002  46		     2			inc	PC80
+ 4003  FF E2		     2			jmp	temp
+				M1	41H
+ = 0042			     1		op2	= 41H + 1
+						LD	B,C_reg
+ 4100  8A E9		     1			mov	B,C_reg
+ 4102  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4104  46		     2			inc	PC80
+ 4105  FF E2		     2			jmp	temp
+				M1	42H
+ = 0043			     1		op2	= 42H + 1
+						LD	B,D
+ 4200  8B D5		     1			mov	temp,bp
+ 4202  8A EE		     1			mov	B,D
+ 4204  B2 00		     1			mov	temp_l,0
+ 4206  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4208  46		     2			inc	PC80
+ 4209  FF E2		     2			jmp	temp
+				M1	43H
+ = 0044			     1		op2	= 43H + 1
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 20 - 1
+
+
+						LD	B,E
+ 4300  8B D5		     1			mov	temp,bp
+ 4302  8A EA		     1			mov	B,E
+ 4304  B2 00		     1			mov	temp_l,0
+ 4306  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4308  46		     2			inc	PC80
+ 4309  FF E2		     2			jmp	temp
+				M1	44H
+ = 0045			     1		op2	= 44H + 1
+						LD	B,H
+ 4400  8A EF		     1			mov	B,H
+ 4402  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4404  46		     2			inc	PC80
+ 4405  FF E2		     2			jmp	temp
+				M1	45H
+ = 0046			     1		op2	= 45H + 1
+						LD	B,L
+ 4500  8A EB		     1			mov	B,L
+ 4502  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4504  46		     2			inc	PC80
+ 4505  FF E2		     2			jmp	temp
+				M1	46H
+ = 0047			     1		op2	= 46H + 1
+						LD	B,M
+ 4600  8A 2F		     1			mov	B,M
+ 4602  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4604  46		     2			inc	PC80
+ 4605  FF E2		     2			jmp	temp
+				M1	47H
+ = 0048			     1		op2	= 47H + 1
+						LD	B,A
+ 4700  8A E8		     1			mov	B,A
+ 4702  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4704  46		     2			inc	PC80
+ 4705  FF E2		     2			jmp	temp
+
+				M1	48H
+ = 0049			     1		op2	= 48H + 1
+						LD	C_reg,B
+ 4800  8A CD		     1			mov	C_reg,B
+ 4802  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4804  46		     2			inc	PC80
+ 4805  FF E2		     2			jmp	temp
+				M1	49H
+ = 004A			     1		op2	= 49H + 1
+						LD	C_reg,C_reg
+ 4900  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4902  46		     2			inc	PC80
+ 4903  FF E2		     2			jmp	temp
+				M1	4AH
+ = 004B			     1		op2	= 4AH + 1
+						LD	C_reg,D
+ 4A00  8B D5		     1			mov	temp,bp
+ 4A02  8A CE		     1			mov	C_reg,D
+ 4A04  B2 00		     1			mov	temp_l,0
+ 4A06  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4A08  46		     2			inc	PC80
+ 4A09  FF E2		     2			jmp	temp
+				M1	4BH
+ = 004C			     1		op2	= 4BH + 1
+						LD	C_reg,E
+ 4B00  8B D5		     1			mov	temp,bp
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 21 - 1
+
+
+ 4B02  8A CA		     1			mov	C_reg,E
+ 4B04  B2 00		     1			mov	temp_l,0
+ 4B06  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4B08  46		     2			inc	PC80
+ 4B09  FF E2		     2			jmp	temp
+				M1	4CH
+ = 004D			     1		op2	= 4CH + 1
+						LD	C_reg,H
+ 4C00  8A CF		     1			mov	C_reg,H
+ 4C02  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4C04  46		     2			inc	PC80
+ 4C05  FF E2		     2			jmp	temp
+				M1	4DH
+ = 004E			     1		op2	= 4DH + 1
+						LD	C_reg,L
+ 4D00  8A CB		     1			mov	C_reg,L
+ 4D02  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4D04  46		     2			inc	PC80
+ 4D05  FF E2		     2			jmp	temp
+				M1	4EH
+ = 004F			     1		op2	= 4EH + 1
+						LD	C_reg,M
+ 4E00  8A 0F		     1			mov	C_reg,M
+ 4E02  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4E04  46		     2			inc	PC80
+ 4E05  FF E2		     2			jmp	temp
+				M1	4FH
+ = 0050			     1		op2	= 4FH + 1
+						LD	C_reg,A
+ 4F00  8A C8		     1			mov	C_reg,A
+ 4F02  8A 34		     2			mov	temp_h,ds:[PC80]
+ 4F04  46		     2			inc	PC80
+ 4F05  FF E2		     2			jmp	temp
+
+				M1	50H
+ = 0051			     1		op2	= 50H + 1
+						LD	D,B
+ 5000  8B D5		     1			mov	temp,bp
+ 5002  8A F5		     1			mov	D,B
+ 5004  8B EA		     1			mov	bp,temp
+ 5006  B2 00		     1			mov	temp_l,0
+ 5008  8A 34		     2			mov	temp_h,ds:[PC80]
+ 500A  46		     2			inc	PC80
+ 500B  FF E2		     2			jmp	temp
+				M1	51H
+ = 0052			     1		op2	= 51H + 1
+						LD	D,C_reg
+ 5100  8B D5		     1			mov	temp,bp
+ 5102  8A F1		     1			mov	D,C_reg
+ 5104  8B EA		     1			mov	bp,temp
+ 5106  B2 00		     1			mov	temp_l,0
+ 5108  8A 34		     2			mov	temp_h,ds:[PC80]
+ 510A  46		     2			inc	PC80
+ 510B  FF E2		     2			jmp	temp
+				M1	52H
+ = 0053			     1		op2	= 52H + 1
+						LD	D,D
+ 5200  8A 34		     2			mov	temp_h,ds:[PC80]
+ 5202  46		     2			inc	PC80
+ 5203  FF E2		     2			jmp	temp
+				M1	53H
+ = 0054			     1		op2	= 53H + 1
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 22 - 1
+
+
+						LD	D,E
+ 5300  8B D5		     1			mov	temp,bp
+ 5302  8A F2		     1			mov	D,E
+ 5304  8B EA		     1			mov	bp,temp
+ 5306  B2 00		     1			mov	temp_l,0
+ 5308  8A 34		     2			mov	temp_h,ds:[PC80]
+ 530A  46		     2			inc	PC80
+ 530B  FF E2		     2			jmp	temp
+				M1	54H
+ = 0055			     1		op2	= 54H + 1
+						LD	D,H
+ 5400  8B D5		     1			mov	temp,bp
+ 5402  8A F7		     1			mov	D,H
+ 5404  8B EA		     1			mov	bp,temp
+ 5406  B2 00		     1			mov	temp_l,0
+ 5408  8A 34		     2			mov	temp_h,ds:[PC80]
+ 540A  46		     2			inc	PC80
+ 540B  FF E2		     2			jmp	temp
+				M1	55H
+ = 0056			     1		op2	= 55H + 1
+						LD	D,L
+ 5500  8B D5		     1			mov	temp,bp
+ 5502  8A F3		     1			mov	D,L
+ 5504  8B EA		     1			mov	bp,temp
+ 5506  B2 00		     1			mov	temp_l,0
+ 5508  8A 34		     2			mov	temp_h,ds:[PC80]
+ 550A  46		     2			inc	PC80
+ 550B  FF E2		     2			jmp	temp
+				M1	56H
+ = 0057			     1		op2	= 56H + 1
+						LD	D,M
+ 5600  8B D5		     1			mov	temp,bp
+ 5602  8A 37		     1			mov	D,M
+ 5604  8B EA		     1			mov	bp,temp
+ 5606  B2 00		     1			mov	temp_l,0
+ 5608  8A 34		     2			mov	temp_h,ds:[PC80]
+ 560A  46		     2			inc	PC80
+ 560B  FF E2		     2			jmp	temp
+				M1	57H
+ = 0058			     1		op2	= 57H + 1
+						LD	D,A
+ 5700  8B D5		     1			mov	temp,bp
+ 5702  8A F0		     1			mov	D,A
+ 5704  8B EA		     1			mov	bp,temp
+ 5706  B2 00		     1			mov	temp_l,0
+ 5708  8A 34		     2			mov	temp_h,ds:[PC80]
+ 570A  46		     2			inc	PC80
+ 570B  FF E2		     2			jmp	temp
+
+				M1	58H
+ = 0059			     1		op2	= 58H + 1
+						LD	E,B
+ 5800  8B D5		     1			mov	temp,bp
+ 5802  8A D5		     1			mov	E,B
+ 5804  8B EA		     1			mov	bp,temp
+ 5806  B2 00		     1			mov	temp_l,0
+ 5808  8A 34		     2			mov	temp_h,ds:[PC80]
+ 580A  46		     2			inc	PC80
+ 580B  FF E2		     2			jmp	temp
+				M1	59H
+ = 005A			     1		op2	= 59H + 1
+						LD	E,C_reg
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 23 - 1
+
+
+ 5900  8B D5		     1			mov	temp,bp
+ 5902  8A D1		     1			mov	E,C_reg
+ 5904  8B EA		     1			mov	bp,temp
+ 5906  B2 00		     1			mov	temp_l,0
+ 5908  8A 34		     2			mov	temp_h,ds:[PC80]
+ 590A  46		     2			inc	PC80
+ 590B  FF E2		     2			jmp	temp
+				M1	5AH
+ = 005B			     1		op2	= 5AH + 1
+						LD	E,D
+ 5A00  8B D5		     1			mov	temp,bp
+ 5A02  8A D6		     1			mov	E,D
+ 5A04  8B EA		     1			mov	bp,temp
+ 5A06  B2 00		     1			mov	temp_l,0
+ 5A08  8A 34		     2			mov	temp_h,ds:[PC80]
+ 5A0A  46		     2			inc	PC80
+ 5A0B  FF E2		     2			jmp	temp
+				M1	5BH
+ = 005C			     1		op2	= 5BH + 1
+						LD	E,E
+ 5B00  8A 34		     2			mov	temp_h,ds:[PC80]
+ 5B02  46		     2			inc	PC80
+ 5B03  FF E2		     2			jmp	temp
+				M1	5CH
+ = 005D			     1		op2	= 5CH + 1
+						LD	E,H
+ 5C00  8B D5		     1			mov	temp,bp
+ 5C02  8A D7		     1			mov	E,H
+ 5C04  8B EA		     1			mov	bp,temp
+ 5C06  B2 00		     1			mov	temp_l,0
+ 5C08  8A 34		     2			mov	temp_h,ds:[PC80]
+ 5C0A  46		     2			inc	PC80
+ 5C0B  FF E2		     2			jmp	temp
+				M1	5DH
+ = 005E			     1		op2	= 5DH + 1
+						LD	E,L
+ 5D00  8B D5		     1			mov	temp,bp
+ 5D02  8A D3		     1			mov	E,L
+ 5D04  8B EA		     1			mov	bp,temp
+ 5D06  B2 00		     1			mov	temp_l,0
+ 5D08  8A 34		     2			mov	temp_h,ds:[PC80]
+ 5D0A  46		     2			inc	PC80
+ 5D0B  FF E2		     2			jmp	temp
+				M1	5EH
+ = 005F			     1		op2	= 5EH + 1
+						LD	E,M
+ 5E00  8B D5		     1			mov	temp,bp
+ 5E02  8A 17		     1			mov	E,M
+ 5E04  8B EA		     1			mov	bp,temp
+ 5E06  B2 00		     1			mov	temp_l,0
+ 5E08  8A 34		     2			mov	temp_h,ds:[PC80]
+ 5E0A  46		     2			inc	PC80
+ 5E0B  FF E2		     2			jmp	temp
+				M1	5FH
+ = 0060			     1		op2	= 5FH + 1
+						LD	E,A
+ 5F00  8B D5		     1			mov	temp,bp
+ 5F02  8A D0		     1			mov	E,A
+ 5F04  8B EA		     1			mov	bp,temp
+ 5F06  B2 00		     1			mov	temp_l,0
+ 5F08  8A 34		     2			mov	temp_h,ds:[PC80]
+ 5F0A  46		     2			inc	PC80
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 24 - 1
+
+
+ 5F0B  FF E2		     2			jmp	temp
+
+				M1	60H
+ = 0061			     1		op2	= 60H + 1
+						LD	H,B
+ 6000  8A FD		     1			mov	H,B
+ 6002  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6004  46		     2			inc	PC80
+ 6005  FF E2		     2			jmp	temp
+				M1	61H
+ = 0062			     1		op2	= 61H + 1
+						LD	H,C_reg
+ 6100  8A F9		     1			mov	H,C_reg
+ 6102  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6104  46		     2			inc	PC80
+ 6105  FF E2		     2			jmp	temp
+				M1	62H
+ = 0063			     1		op2	= 62H + 1
+						LD	H,D
+ 6200  8B D5		     1			mov	temp,bp
+ 6202  8A FE		     1			mov	H,D
+ 6204  B2 00		     1			mov	temp_l,0
+ 6206  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6208  46		     2			inc	PC80
+ 6209  FF E2		     2			jmp	temp
+				M1	63H
+ = 0064			     1		op2	= 63H + 1
+						LD	H,E
+ 6300  8B D5		     1			mov	temp,bp
+ 6302  8A FA		     1			mov	H,E
+ 6304  B2 00		     1			mov	temp_l,0
+ 6306  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6308  46		     2			inc	PC80
+ 6309  FF E2		     2			jmp	temp
+				M1	64H
+ = 0065			     1		op2	= 64H + 1
+						LD	H,H
+ 6400  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6402  46		     2			inc	PC80
+ 6403  FF E2		     2			jmp	temp
+				M1	65H
+ = 0066			     1		op2	= 65H + 1
+						LD	H,L
+ 6500  8A FB		     1			mov	H,L
+ 6502  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6504  46		     2			inc	PC80
+ 6505  FF E2		     2			jmp	temp
+				M1	66H
+ = 0067			     1		op2	= 66H + 1
+						LD	H,M
+ 6600  8A 3F		     1			mov	H,M
+ 6602  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6604  46		     2			inc	PC80
+ 6605  FF E2		     2			jmp	temp
+				M1	67H
+ = 0068			     1		op2	= 67H + 1
+						LD	H,A
+ 6700  8A F8		     1			mov	H,A
+ 6702  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6704  46		     2			inc	PC80
+ 6705  FF E2		     2			jmp	temp
+
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 25 - 1
+
+
+				M1	68H
+ = 0069			     1		op2	= 68H + 1
+						LD	L,B
+ 6800  8A DD		     1			mov	L,B
+ 6802  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6804  46		     2			inc	PC80
+ 6805  FF E2		     2			jmp	temp
+				M1	69H
+ = 006A			     1		op2	= 69H + 1
+						LD	L,C_reg
+ 6900  8A D9		     1			mov	L,C_reg
+ 6902  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6904  46		     2			inc	PC80
+ 6905  FF E2		     2			jmp	temp
+				M1	6AH
+ = 006B			     1		op2	= 6AH + 1
+						LD	L,D
+ 6A00  8B D5		     1			mov	temp,bp
+ 6A02  8A DE		     1			mov	L,D
+ 6A04  B2 00		     1			mov	temp_l,0
+
+ 6A06  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6A08  46		     2			inc	PC80
+ 6A09  FF E2		     2			jmp	temp
+				M1	6BH
+ = 006C			     1		op2	= 6BH + 1
+						LD	L,E
+ 6B00  8B D5		     1			mov	temp,bp
+ 6B02  8A DA		     1			mov	L,E
+ 6B04  B2 00		     1			mov	temp_l,0
+ 6B06  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6B08  46		     2			inc	PC80
+ 6B09  FF E2		     2			jmp	temp
+				M1	6CH
+ = 006D			     1		op2	= 6CH + 1
+						LD	L,H
+ 6C00  8A DF		     1			mov	L,H
+ 6C02  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6C04  46		     2			inc	PC80
+ 6C05  FF E2		     2			jmp	temp
+				M1	6DH
+ = 006E			     1		op2	= 6DH + 1
+						LD	L,L
+ 6D00  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6D02  46		     2			inc	PC80
+ 6D03  FF E2		     2			jmp	temp
+				M1	6EH
+ = 006F			     1		op2	= 6EH + 1
+						LD	L,M
+ 6E00  8A 1F		     1			mov	L,M
+ 6E02  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6E04  46		     2			inc	PC80
+ 6E05  FF E2		     2			jmp	temp
+				M1	6FH
+ = 0070			     1		op2	= 6FH + 1
+						LD	L,A
+ 6F00  8A D8		     1			mov	L,A
+ 6F02  8A 34		     2			mov	temp_h,ds:[PC80]
+ 6F04  46		     2			inc	PC80
+ 6F05  FF E2		     2			jmp	temp
+
+				M1	70H
+ = 0071			     1		op2	= 70H + 1
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 26 - 1
+
+
+						LD	M,B
+ 7000  88 2F		     1			mov	M,B
+ 7002  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7004  46		     2			inc	PC80
+ 7005  FF E2		     2			jmp	temp
+				M1	71H
+ = 0072			     1		op2	= 71H + 1
+						LD	M,C_reg
+ 7100  88 0F		     1			mov	M,C_reg
+ 7102  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7104  46		     2			inc	PC80
+ 7105  FF E2		     2			jmp	temp
+				M1	72H
+ = 0073			     1		op2	= 72H + 1
+						LD	M,D
+ 7200  8B D5		     1			mov	temp,bp
+ 7202  88 37		     1			mov	M,D
+ 7204  B2 00		     1			mov	temp_l,0
+ 7206  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7208  46		     2			inc	PC80
+ 7209  FF E2		     2			jmp	temp
+				M1	73H
+ = 0074			     1		op2	= 73H + 1
+						LD	M,E
+ 7300  8B D5		     1			mov	temp,bp
+ 7302  88 17		     1			mov	M,E
+ 7304  B2 00		     1			mov	temp_l,0
+ 7306  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7308  46		     2			inc	PC80
+ 7309  FF E2		     2			jmp	temp
+				M1	74H
+ = 0075			     1		op2	= 74H + 1
+						LD	M,H
+ 7400  88 3F		     1			mov	M,H
+ 7402  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7404  46		     2			inc	PC80
+ 7405  FF E2		     2			jmp	temp
+				M1	75H
+ = 0076			     1		op2	= 75H + 1
+						LD	M,L
+ 7500  88 1F		     1			mov	M,L
+ 7502  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7504  46		     2			inc	PC80
+ 7505  FF E2		     2			jmp	temp
+				M1	76H				;HLT
+ = 0077			     1		op2	= 76H + 1
+ 7600  8B D5					mov	temp,bp
+ 7602  BD 0001					mov	bp,code_HLT
+ 7605  CB					retf
+				M1	77H
+ = 0078			     1		op2	= 77H + 1
+						LD	M,A
+ 7700  88 07		     1			mov	M,A
+ 7702  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7704  46		     2			inc	PC80
+ 7705  FF E2		     2			jmp	temp
+
+				M1	78H
+ = 0079			     1		op2	= 78H + 1
+						LD	A,B
+ 7800  8A C5		     1			mov	A,B
+ 7802  8A 34		     2			mov	temp_h,ds:[PC80]
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 27 - 1
+
+
+ 7804  46		     2			inc	PC80
+ 7805  FF E2		     2			jmp	temp
+				M1	79H
+ = 007A			     1		op2	= 79H + 1
+						LD	A,C_reg
+ 7900  8A C1		     1			mov	A,C_reg
+ 7902  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7904  46		     2			inc	PC80
+ 7905  FF E2		     2			jmp	temp
+				M1	7AH
+ = 007B			     1		op2	= 7AH + 1
+						LD	A,D
+ 7A00  8B D5		     1			mov	temp,bp
+ 7A02  8A C6		     1			mov	A,D
+ 7A04  B2 00		     1			mov	temp_l,0
+ 7A06  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7A08  46		     2			inc	PC80
+ 7A09  FF E2		     2			jmp	temp
+				M1	7BH
+ = 007C			     1		op2	= 7BH + 1
+						LD	A,E
+ 7B00  8B D5		     1			mov	temp,bp
+ 7B02  8A C2		     1			mov	A,E
+ 7B04  B2 00		     1			mov	temp_l,0
+ 7B06  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7B08  46		     2			inc	PC80
+ 7B09  FF E2		     2			jmp	temp
+				M1	7CH
+ = 007D			     1		op2	= 7CH + 1
+						LD	A,H
+ 7C00  8A C7		     1			mov	A,H
+ 7C02  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7C04  46		     2			inc	PC80
+ 7C05  FF E2		     2			jmp	temp
+				M1	7DH
+ = 007E			     1		op2	= 7DH + 1
+						LD	A,L
+ 7D00  8A C3		     1			mov	A,L
+ 7D02  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7D04  46		     2			inc	PC80
+ 7D05  FF E2		     2			jmp	temp
+				M1	7EH
+ = 007F			     1		op2	= 7EH + 1
+						LD	A,M
+ 7E00  8A 07		     1			mov	A,M
+ 7E02  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7E04  46		     2			inc	PC80
+ 7E05  FF E2		     2			jmp	temp
+				M1	7FH
+ = 0080			     1		op2	= 7FH + 1
+						LD	A,A
+ 7F00  8A 34		     2			mov	temp_h,ds:[PC80]
+ 7F02  46		     2			inc	PC80
+ 7F03  FF E2		     2			jmp	temp
+				;--------------------------------------
+				M1	80H
+ = 0081			     1		op2	= 80H + 1
+						ADD8	B
+ 8000  02 C5		     1			add	A,B
+ 8002  9F		     1			lahf
+ 8003  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8005  46		     2			inc	PC80
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 28 - 1
+
+
+ 8006  FF E2		     2			jmp	temp
+				M1	81H
+ = 0082			     1		op2	= 81H + 1
+						ADD8	C_reg
+ 8100  02 C1		     1			add	A,C_reg
+ 8102  9F		     1			lahf
+ 8103  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8105  46		     2			inc	PC80
+ 8106  FF E2		     2			jmp	temp
+				M1	82H
+ = 0083			     1		op2	= 82H + 1
+						ADD8	D
+ 8200  8B D5		     1			mov	temp,bp
+ 8202  02 C6		     1			add	A,D
+ 8204  B2 00		     1			mov	temp_l,0
+ 8206  9F		     1			lahf
+ 8207  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8209  46		     2			inc	PC80
+ 820A  FF E2		     2			jmp	temp
+				M1	83H
+ = 0084			     1		op2	= 83H + 1
+						ADD8	E
+ 8300  8B D5		     1			mov	temp,bp
+ 8302  02 C2		     1			add	A,E
+ 8304  B2 00		     1			mov	temp_l,0
+ 8306  9F		     1			lahf
+ 8307  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8309  46		     2			inc	PC80
+ 830A  FF E2		     2			jmp	temp
+				M1	84H
+ = 0085			     1		op2	= 84H + 1
+						ADD8	H
+ 8400  02 C7		     1			add	A,H
+ 8402  9F		     1			lahf
+ 8403  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8405  46		     2			inc	PC80
+ 8406  FF E2		     2			jmp	temp
+				M1	85H
+ = 0086			     1		op2	= 85H + 1
+						ADD8	L
+ 8500  02 C3		     1			add	A,L
+ 8502  9F		     1			lahf
+ 8503  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8505  46		     2			inc	PC80
+ 8506  FF E2		     2			jmp	temp
+				M1	86H
+ = 0087			     1		op2	= 86H + 1
+						ADD8	M
+ 8600  02 07		     1			add	A,M
+ 8602  9F		     1			lahf
+ 8603  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8605  46		     2			inc	PC80
+ 8606  FF E2		     2			jmp	temp
+				M1	87H
+ = 0088			     1		op2	= 87H + 1
+						ADD8	A
+ 8700  02 C0		     1			add	A,A
+ 8702  9F		     1			lahf
+ 8703  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8705  46		     2			inc	PC80
+ 8706  FF E2		     2			jmp	temp
+
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 29 - 1
+
+
+				M1	88H
+ = 0089			     1		op2	= 88H + 1
+						ADC8	B
+ 8800  9E		     1			sahf
+ 8801  12 C5		     1			adc	A,B
+ 8803  9F		     1			lahf
+ 8804  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8806  46		     2			inc	PC80
+ 8807  FF E2		     2			jmp	temp
+				M1	89H
+ = 008A			     1		op2	= 89H + 1
+						ADC8	C_reg
+ 8900  9E		     1			sahf
+ 8901  12 C1		     1			adc	A,C_reg
+ 8903  9F		     1			lahf
+ 8904  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8906  46		     2			inc	PC80
+ 8907  FF E2		     2			jmp	temp
+				M1	8AH
+ = 008B			     1		op2	= 8AH + 1
+						ADC8	D
+ 8A00  9E		     1			sahf
+ 8A01  8B D5		     1			mov	temp,bp
+ 8A03  12 C6		     1			adc	A,D
+ 8A05  B2 00		     1			mov	temp_l,0
+ 8A07  9F		     1			lahf
+ 8A08  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8A0A  46		     2			inc	PC80
+ 8A0B  FF E2		     2			jmp	temp
+				M1	8BH
+ = 008C			     1		op2	= 8BH + 1
+						ADC8	E
+ 8B00  9E		     1			sahf
+ 8B01  8B D5		     1			mov	temp,bp
+ 8B03  12 C2		     1			adc	A,E
+ 8B05  B2 00		     1			mov	temp_l,0
+ 8B07  9F		     1			lahf
+ 8B08  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8B0A  46		     2			inc	PC80
+ 8B0B  FF E2		     2			jmp	temp
+				M1	8CH
+ = 008D			     1		op2	= 8CH + 1
+						ADC8	H
+ 8C00  9E		     1			sahf
+ 8C01  12 C7		     1			adc	A,H
+ 8C03  9F		     1			lahf
+ 8C04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8C06  46		     2			inc	PC80
+ 8C07  FF E2		     2			jmp	temp
+				M1	8DH
+ = 008E			     1		op2	= 8DH + 1
+						ADC8	L
+ 8D00  9E		     1			sahf
+ 8D01  12 C3		     1			adc	A,L
+ 8D03  9F		     1			lahf
+ 8D04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8D06  46		     2			inc	PC80
+ 8D07  FF E2		     2			jmp	temp
+				M1	8EH
+ = 008F			     1		op2	= 8EH + 1
+						ADC8	M
+ 8E00  9E		     1			sahf
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 30 - 1
+
+
+ 8E01  12 07		     1			adc	A,M
+ 8E03  9F		     1			lahf
+ 8E04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8E06  46		     2			inc	PC80
+ 8E07  FF E2		     2			jmp	temp
+				M1	8FH
+ = 0090			     1		op2	= 8FH + 1
+						ADC8	A
+ 8F00  9E		     1			sahf
+ 8F01  12 C0		     1			adc	A,A
+ 8F03  9F		     1			lahf
+ 8F04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 8F06  46		     2			inc	PC80
+ 8F07  FF E2		     2			jmp	temp
+
+				M1	90H
+ = 0091			     1		op2	= 90H + 1
+						SUB8	B
+ 9000  2A C5		     1			sub	A,B
+ 9002  9F		     1			lahf
+ 9003  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9005  46		     2			inc	PC80
+ 9006  FF E2		     2			jmp	temp
+				M1	91H
+ = 0092			     1		op2	= 91H + 1
+						SUB8	C_reg
+ 9100  2A C1		     1			sub	A,C_reg
+ 9102  9F		     1			lahf
+ 9103  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9105  46		     2			inc	PC80
+ 9106  FF E2		     2			jmp	temp
+				M1	92H
+ = 0093			     1		op2	= 92H + 1
+						SUB8	D
+ 9200  8B D5		     1			mov	temp,bp
+ 9202  2A C6		     1			sub	A,D
+ 9204  B2 00		     1			mov	temp_l,0
+ 9206  9F		     1			lahf
+ 9207  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9209  46		     2			inc	PC80
+ 920A  FF E2		     2			jmp	temp
+				M1	93H
+ = 0094			     1		op2	= 93H + 1
+						SUB8	E
+ 9300  8B D5		     1			mov	temp,bp
+ 9302  2A C2		     1			sub	A,E
+ 9304  B2 00		     1			mov	temp_l,0
+ 9306  9F		     1			lahf
+ 9307  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9309  46		     2			inc	PC80
+ 930A  FF E2		     2			jmp	temp
+				M1	94H
+ = 0095			     1		op2	= 94H + 1
+						SUB8	H
+ 9400  2A C7		     1			sub	A,H
+ 9402  9F		     1			lahf
+ 9403  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9405  46		     2			inc	PC80
+ 9406  FF E2		     2			jmp	temp
+				M1	95H
+ = 0096			     1		op2	= 95H + 1
+						SUB8	L
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 31 - 1
+
+
+ 9500  2A C3		     1			sub	A,L
+ 9502  9F		     1			lahf
+ 9503  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9505  46		     2			inc	PC80
+ 9506  FF E2		     2			jmp	temp
+				M1	96H
+ = 0097			     1		op2	= 96H + 1
+						SUB8	M
+ 9600  2A 07		     1			sub	A,M
+ 9602  9F		     1			lahf
+ 9603  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9605  46		     2			inc	PC80
+ 9606  FF E2		     2			jmp	temp
+				M1	97H
+ = 0098			     1		op2	= 97H + 1
+						SUB8	A
+ 9700  2A C0		     1			sub	A,A
+ 9702  9F		     1			lahf
+ 9703  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9705  46		     2			inc	PC80
+ 9706  FF E2		     2			jmp	temp
+
+				M1	98H
+ = 0099			     1		op2	= 98H + 1
+						SBC8	B
+ 9800  9E		     1			sahf
+ 9801  1A C5		     1			sbb	A,B
+ 9803  9F		     1			lahf
+ 9804  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9806  46		     2			inc	PC80
+ 9807  FF E2		     2			jmp	temp
+				M1	99H
+ = 009A			     1		op2	= 99H + 1
+						SBC8	C_reg
+ 9900  9E		     1			sahf
+ 9901  1A C1		     1			sbb	A,C_reg
+ 9903  9F		     1			lahf
+ 9904  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9906  46		     2			inc	PC80
+ 9907  FF E2		     2			jmp	temp
+				M1	9AH
+ = 009B			     1		op2	= 9AH + 1
+						SBC8	D
+ 9A00  9E		     1			sahf
+ 9A01  8B D5		     1			mov	temp,bp
+ 9A03  1A C6		     1			sbb	A,D
+ 9A05  B2 00		     1			mov	temp_l,0
+ 9A07  9F		     1			lahf
+ 9A08  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9A0A  46		     2			inc	PC80
+ 9A0B  FF E2		     2			jmp	temp
+				M1	9BH
+ = 009C			     1		op2	= 9BH + 1
+						SBC8	E
+ 9B00  9E		     1			sahf
+ 9B01  8B D5		     1			mov	temp,bp
+ 9B03  1A C2		     1			sbb	A,E
+ 9B05  B2 00		     1			mov	temp_l,0
+ 9B07  9F		     1			lahf
+ 9B08  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9B0A  46		     2			inc	PC80
+ 9B0B  FF E2		     2			jmp	temp
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 32 - 1
+
+
+				M1	9CH
+ = 009D			     1		op2	= 9CH + 1
+						SBC8	H
+ 9C00  9E		     1			sahf
+ 9C01  1A C7		     1			sbb	A,H
+ 9C03  9F		     1			lahf
+ 9C04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9C06  46		     2			inc	PC80
+ 9C07  FF E2		     2			jmp	temp
+				M1	9DH
+ = 009E			     1		op2	= 9DH + 1
+						SBC8	L
+ 9D00  9E		     1			sahf
+ 9D01  1A C3		     1			sbb	A,L
+ 9D03  9F		     1			lahf
+ 9D04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9D06  46		     2			inc	PC80
+ 9D07  FF E2		     2			jmp	temp
+				M1	9EH
+ = 009F			     1		op2	= 9EH + 1
+						SBC8	M
+ 9E00  9E		     1			sahf
+ 9E01  1A 07		     1			sbb	A,M
+ 9E03  9F		     1			lahf
+ 9E04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9E06  46		     2			inc	PC80
+ 9E07  FF E2		     2			jmp	temp
+				M1	9FH
+ = 00A0			     1		op2	= 9FH + 1
+						SBC8	A
+ 9F00  9E		     1			sahf
+ 9F01  1A C0		     1			sbb	A,A
+ 9F03  9F		     1			lahf
+ 9F04  8A 34		     2			mov	temp_h,ds:[PC80]
+ 9F06  46		     2			inc	PC80
+ 9F07  FF E2		     2			jmp	temp
+
+				M1	0A0H
+ = 00A1			     1		op2	= 0A0H + 1
+						ANA	B
+ A000  22 C5		     1			and	A,B
+ A002  9F		     1			lahf
+ A003  8A 34		     2			mov	temp_h,ds:[PC80]
+ A005  46		     2			inc	PC80
+ A006  FF E2		     2			jmp	temp
+				M1	0A1H
+ = 00A2			     1		op2	= 0A1H + 1
+						ANA	C_reg
+ A100  22 C1		     1			and	A,C_reg
+ A102  9F		     1			lahf
+ A103  8A 34		     2			mov	temp_h,ds:[PC80]
+ A105  46		     2			inc	PC80
+ A106  FF E2		     2			jmp	temp
+				M1	0A2H
+ = 00A3			     1		op2	= 0A2H + 1
+						ANA	D
+ A200  8B D5		     1			mov	temp,bp
+ A202  22 C6		     1			and	A,D
+ A204  B2 00		     1			mov	temp_l,0
+ A206  9F		     1			lahf
+ A207  8A 34		     2			mov	temp_h,ds:[PC80]
+ A209  46		     2			inc	PC80
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 33 - 1
+
+
+ A20A  FF E2		     2			jmp	temp
+				M1	0A3H
+ = 00A4			     1		op2	= 0A3H + 1
+						ANA	E
+ A300  8B D5		     1			mov	temp,bp
+ A302  22 C2		     1			and	A,E
+ A304  B2 00		     1			mov	temp_l,0
+ A306  9F		     1			lahf
+ A307  8A 34		     2			mov	temp_h,ds:[PC80]
+ A309  46		     2			inc	PC80
+ A30A  FF E2		     2			jmp	temp
+				M1	0A4H
+ = 00A5			     1		op2	= 0A4H + 1
+						ANA	H
+ A400  22 C7		     1			and	A,H
+ A402  9F		     1			lahf
+ A403  8A 34		     2			mov	temp_h,ds:[PC80]
+ A405  46		     2			inc	PC80
+ A406  FF E2		     2			jmp	temp
+				M1	0A5H
+ = 00A6			     1		op2	= 0A5H + 1
+						ANA	L
+ A500  22 C3		     1			and	A,L
+ A502  9F		     1			lahf
+ A503  8A 34		     2			mov	temp_h,ds:[PC80]
+ A505  46		     2			inc	PC80
+ A506  FF E2		     2			jmp	temp
+				M1	0A6H
+ = 00A7			     1		op2	= 0A6H + 1
+						ANA	M
+ A600  22 07		     1			and	A,M
+ A602  9F		     1			lahf
+ A603  8A 34		     2			mov	temp_h,ds:[PC80]
+ A605  46		     2			inc	PC80
+ A606  FF E2		     2			jmp	temp
+				M1	0A7H
+ = 00A8			     1		op2	= 0A7H + 1
+						ANA	A
+ A700  22 C0		     1			and	A,A
+ A702  9F		     1			lahf
+ A703  8A 34		     2			mov	temp_h,ds:[PC80]
+ A705  46		     2			inc	PC80
+ A706  FF E2		     2			jmp	temp
+
+				M1	0A8H
+ = 00A9			     1		op2	= 0A8H + 1
+						XRA	B
+ A800  32 C5		     1			xor	A,B
+ A802  9F		     1			lahf
+ A803  8A 34		     2			mov	temp_h,ds:[PC80]
+ A805  46		     2			inc	PC80
+ A806  FF E2		     2			jmp	temp
+				M1	0A9H
+ = 00AA			     1		op2	= 0A9H + 1
+						XRA	C_reg
+ A900  32 C1		     1			xor	A,C_reg
+ A902  9F		     1			lahf
+ A903  8A 34		     2			mov	temp_h,ds:[PC80]
+ A905  46		     2			inc	PC80
+ A906  FF E2		     2			jmp	temp
+				M1	0AAH
+ = 00AB			     1		op2	= 0AAH + 1
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 34 - 1
+
+
+						XRA	D
+ AA00  8B D5		     1			mov	temp,bp
+ AA02  32 C6		     1			xor	A,D
+ AA04  B2 00		     1			mov	temp_l,0
+ AA06  9F		     1			lahf
+ AA07  8A 34		     2			mov	temp_h,ds:[PC80]
+ AA09  46		     2			inc	PC80
+ AA0A  FF E2		     2			jmp	temp
+				M1	0ABH
+ = 00AC			     1		op2	= 0ABH + 1
+						XRA	E
+ AB00  8B D5		     1			mov	temp,bp
+ AB02  32 C2		     1			xor	A,E
+ AB04  B2 00		     1			mov	temp_l,0
+ AB06  9F		     1			lahf
+ AB07  8A 34		     2			mov	temp_h,ds:[PC80]
+ AB09  46		     2			inc	PC80
+ AB0A  FF E2		     2			jmp	temp
+				M1	0ACH
+ = 00AD			     1		op2	= 0ACH + 1
+						XRA	H
+ AC00  32 C7		     1			xor	A,H
+ AC02  9F		     1			lahf
+ AC03  8A 34		     2			mov	temp_h,ds:[PC80]
+ AC05  46		     2			inc	PC80
+ AC06  FF E2		     2			jmp	temp
+				M1	0ADH
+ = 00AE			     1		op2	= 0ADH + 1
+						XRA	L
+ AD00  32 C3		     1			xor	A,L
+ AD02  9F		     1			lahf
+ AD03  8A 34		     2			mov	temp_h,ds:[PC80]
+ AD05  46		     2			inc	PC80
+ AD06  FF E2		     2			jmp	temp
+				M1	0AEH
+ = 00AF			     1		op2	= 0AEH + 1
+						XRA	M
+ AE00  32 07		     1			xor	A,M
+ AE02  9F		     1			lahf
+ AE03  8A 34		     2			mov	temp_h,ds:[PC80]
+ AE05  46		     2			inc	PC80
+ AE06  FF E2		     2			jmp	temp
+				M1	0AFH
+ = 00B0			     1		op2	= 0AFH + 1
+						XRA	A
+ AF00  32 C0		     1			xor	A,A
+ AF02  9F		     1			lahf
+ AF03  8A 34		     2			mov	temp_h,ds:[PC80]
+ AF05  46		     2			inc	PC80
+ AF06  FF E2		     2			jmp	temp
+
+				M1	0B0H
+ = 00B1			     1		op2	= 0B0H + 1
+						ORA	B
+ B000  0A C5		     1			or	A,B
+ B002  9F		     1			lahf
+ B003  8A 34		     2			mov	temp_h,ds:[PC80]
+ B005  46		     2			inc	PC80
+ B006  FF E2		     2			jmp	temp
+				M1	0B1H
+ = 00B2			     1		op2	= 0B1H + 1
+						ORA	C_reg
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 35 - 1
+
+
+ B100  0A C1		     1			or	A,C_reg
+ B102  9F		     1			lahf
+ B103  8A 34		     2			mov	temp_h,ds:[PC80]
+ B105  46		     2			inc	PC80
+ B106  FF E2		     2			jmp	temp
+				M1	0B2H
+ = 00B3			     1		op2	= 0B2H + 1
+						ORA	D
+ B200  8B D5		     1			mov	temp,bp
+ B202  0A C6		     1			or	A,D
+ B204  B2 00		     1			mov	temp_l,0
+ B206  9F		     1			lahf
+ B207  8A 34		     2			mov	temp_h,ds:[PC80]
+ B209  46		     2			inc	PC80
+ B20A  FF E2		     2			jmp	temp
+				M1	0B3H
+ = 00B4			     1		op2	= 0B3H + 1
+						ORA	E
+ B300  8B D5		     1			mov	temp,bp
+ B302  0A C2		     1			or	A,E
+ B304  B2 00		     1			mov	temp_l,0
+ B306  9F		     1			lahf
+ B307  8A 34		     2			mov	temp_h,ds:[PC80]
+ B309  46		     2			inc	PC80
+ B30A  FF E2		     2			jmp	temp
+				M1	0B4H
+ = 00B5			     1		op2	= 0B4H + 1
+						ORA	H
+ B400  0A C7		     1			or	A,H
+ B402  9F		     1			lahf
+ B403  8A 34		     2			mov	temp_h,ds:[PC80]
+ B405  46		     2			inc	PC80
+ B406  FF E2		     2			jmp	temp
+				M1	0B5H
+ = 00B6			     1		op2	= 0B5H + 1
+						ORA	L
+ B500  0A C3		     1			or	A,L
+ B502  9F		     1			lahf
+ B503  8A 34		     2			mov	temp_h,ds:[PC80]
+ B505  46		     2			inc	PC80
+ B506  FF E2		     2			jmp	temp
+				M1	0B6H
+ = 00B7			     1		op2	= 0B6H + 1
+						ORA	M
+ B600  0A 07		     1			or	A,M
+ B602  9F		     1			lahf
+ B603  8A 34		     2			mov	temp_h,ds:[PC80]
+ B605  46		     2			inc	PC80
+ B606  FF E2		     2			jmp	temp
+				M1	0B7H
+ = 00B8			     1		op2	= 0B7H + 1
+						ORA	A
+ B700  0A C0		     1			or	A,A
+ B702  9F		     1			lahf
+ B703  8A 34		     2			mov	temp_h,ds:[PC80]
+ B705  46		     2			inc	PC80
+ B706  FF E2		     2			jmp	temp
+
+				M1	0B8H
+ = 00B9			     1		op2	= 0B8H + 1
+						CPA	B
+ B800  3A C5		     1			cmp	A,B
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 36 - 1
+
+
+ B802  9F		     1			lahf
+ B803  8A 34		     2			mov	temp_h,ds:[PC80]
+ B805  46		     2			inc	PC80
+ B806  FF E2		     2			jmp	temp
+				M1	0B9H
+ = 00BA			     1		op2	= 0B9H + 1
+						CPA	C_reg
+ B900  3A C1		     1			cmp	A,C_reg
+ B902  9F		     1			lahf
+ B903  8A 34		     2			mov	temp_h,ds:[PC80]
+ B905  46		     2			inc	PC80
+ B906  FF E2		     2			jmp	temp
+				M1	0BAH
+ = 00BB			     1		op2	= 0BAH + 1
+						CPA	D
+ BA00  8B D5		     1			mov	temp,bp
+ BA02  3A C6		     1			cmp	A,D
+ BA04  B2 00		     1			mov	temp_l,0
+ BA06  9F		     1			lahf
+ BA07  8A 34		     2			mov	temp_h,ds:[PC80]
+ BA09  46		     2			inc	PC80
+ BA0A  FF E2		     2			jmp	temp
+				M1	0BBH
+ = 00BC			     1		op2	= 0BBH + 1
+						CPA	E
+ BB00  8B D5		     1			mov	temp,bp
+ BB02  3A C2		     1			cmp	A,E
+ BB04  B2 00		     1			mov	temp_l,0
+ BB06  9F		     1			lahf
+ BB07  8A 34		     2			mov	temp_h,ds:[PC80]
+ BB09  46		     2			inc	PC80
+ BB0A  FF E2		     2			jmp	temp
+				M1	0BCH
+ = 00BD			     1		op2	= 0BCH + 1
+						CPA	H
+ BC00  3A C7		     1			cmp	A,H
+ BC02  9F		     1			lahf
+ BC03  8A 34		     2			mov	temp_h,ds:[PC80]
+ BC05  46		     2			inc	PC80
+ BC06  FF E2		     2			jmp	temp
+				M1	0BDH
+ = 00BE			     1		op2	= 0BDH + 1
+						CPA	L
+ BD00  3A C3		     1			cmp	A,L
+ BD02  9F		     1			lahf
+ BD03  8A 34		     2			mov	temp_h,ds:[PC80]
+ BD05  46		     2			inc	PC80
+ BD06  FF E2		     2			jmp	temp
+				M1	0BEH
+ = 00BF			     1		op2	= 0BEH + 1
+						CPA	M
+ BE00  3A 07		     1			cmp	A,M
+ BE02  9F		     1			lahf
+ BE03  8A 34		     2			mov	temp_h,ds:[PC80]
+ BE05  46		     2			inc	PC80
+ BE06  FF E2		     2			jmp	temp
+				M1	0BFH
+ = 00C0			     1		op2	= 0BFH + 1
+						CPA	A
+ BF00  3A C0		     1			cmp	A,A
+ BF02  9F		     1			lahf
+ BF03  8A 34		     2			mov	temp_h,ds:[PC80]
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 37 - 1
+
+
+ BF05  46		     2			inc	PC80
+ BF06  FF E2		     2			jmp	temp
+				;--------------------------
+				M1	0C0H
+ = 00C1			     1		op2	= 0C0H + 1
+						RET80	NZ
+ C000  9E		     1			sahf
+ C001  75 05		     1			jNZ	@f
+ C003  8A 34		     2			mov	temp_h,ds:[PC80]
+ C005  46		     2			inc	PC80
+ C006  FF E2		     2			jmp	temp
+ C008			     1	@@:
+ C008  8B 35		     1			mov	PC80,ds:[SP80]
+ C00A  83 C7 02		     1			add	SP80,2
+ C00D  8A 34		     2			mov	temp_h,ds:[PC80]
+ C00F  46		     2			inc	PC80
+ C010  FF E2		     2			jmp	temp
+
+				M1	0C1H
+ = 00C2			     1		op2	= 0C1H + 1
+						POP8	BC
+ C100  8B 0D		     1			mov	BC,ds:[SP80]
+ C102  83 C7 02		     1			add	SP80,2
+ C105  8A 34		     2			mov	temp_h,ds:[PC80]
+ C107  46		     2			inc	PC80
+ C108  FF E2		     2			jmp	temp
+
+				M1	0C2H
+ = 00C3			     1		op2	= 0C2H + 1
+						JP80	NZ
+ C200  9E		     1			sahf
+ C201  75 08		     1			jNZ	@f
+ C203  8A 74 02		     2			mov	temp_h,ds:[PC80+2]
+ C206  83 C6 03		     2			add	PC80,3
+ C209  FF E2		     2			jmp	temp
+ C20B			     1	@@:
+ C20B  8B 34		     1			mov	PC80,ds:[PC80]
+ C20D  8A 34		     2			mov	temp_h,ds:[PC80]
+ C20F  46		     2			inc	PC80
+ C210  FF E2		     2			jmp	temp
+
+				M1	0C3H
+ = 00C4			     1		op2	= 0C3H + 1
+						JP80
+ C300  8B 34		     1			mov	PC80,ds:[PC80]
+ C302  8A 34		     2			mov	temp_h,ds:[PC80]
+ C304  46		     2			inc	PC80
+ C305  FF E2		     2			jmp	temp
+
+				M1	0C4H
+ = 00C5			     1		op2	= 0C4H + 1
+						CALL80	NZ
+ C400  83 C6 02		     1			add	PC80,2
+ C403  9E		     1			sahf
+ C404  75 05		     1			jNZ	@f
+ C406  8A 34		     2			mov	temp_h,ds:[PC80]
+ C408  46		     2			inc	PC80
+ C409  FF E2		     2			jmp	temp
+ C40B			     1	@@:
+ C40B  83 EF 02		     1			sub	SP80,2
+ C40E  89 35		     1			mov	ds:[SP80],PC80
+ C410  8B 74 FE		     1			mov	PC80,ds:[PC80-2]
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 38 - 1
+
+
+ C413  8A 34		     2			mov	temp_h,ds:[PC80]
+ C415  46		     2			inc	PC80
+ C416  FF E2		     2			jmp	temp
+
+				M1	0C5H
+ = 00C6			     1		op2	= 0C5H + 1
+						PUSH8	BC
+ C500  83 EF 02		     1			sub	SP80,2
+ C503  89 0D		     1			mov	ds:[SP80],BC
+ C505  8A 34		     2			mov	temp_h,ds:[PC80]
+ C507  46		     2			inc	PC80
+ C508  FF E2		     2			jmp	temp
+
+				M1	0C6H				;add	
+				A,n
+ = 00C7			     1		op2	= 0C6H + 1
+ C600  02 04					add	A,ds:[PC80]
+ C602  9F					lahf
+						fetch2
+ C603  46		     1			inc	PC80
+ C604  8A 34		     1			mov	temp_h,ds:[PC80]
+ C606  46		     1			inc	PC80
+ C607  FF E2		     1			jmp	temp
+
+				M1	0C7H
+ = 00C8			     1		op2	= 0C7H + 1
+						RST	00h
+ C700  83 EF 02		     1			sub	SP80,2
+ C703  89 35		     1			mov	ds:[SP80],PC80
+ C705  BE 0000		     1			mov	PC80,00h
+ C708  8A 34		     2			mov	temp_h,ds:[PC80]
+ C70A  46		     2			inc	PC80
+ C70B  FF E2		     2			jmp	temp
+
+				M1	0C8H
+ = 00C9			     1		op2	= 0C8H + 1
+						RET80	Z
+ C800  9E		     1			sahf
+ C801  74 05		     1			jZ	@f
+ C803  8A 34		     2			mov	temp_h,ds:[PC80]
+ C805  46		     2			inc	PC80
+ C806  FF E2		     2			jmp	temp
+ C808			     1	@@:
+ C808  8B 35		     1			mov	PC80,ds:[SP80]
+ C80A  83 C7 02		     1			add	SP80,2
+ C80D  8A 34		     2			mov	temp_h,ds:[PC80]
+ C80F  46		     2			inc	PC80
+ C810  FF E2		     2			jmp	temp
+
+				M1	0C9H
+ = 00CA			     1		op2	= 0C9H + 1
+						RET80
+ C900  8B 35		     1			mov	PC80,ds:[SP80]
+ C902  83 C7 02		     1			add	SP80,2
+ C905  8A 34		     2			mov	temp_h,ds:[PC80]
+ C907  46		     2			inc	PC80
+ C908  FF E2		     2			jmp	temp
+
+				M1	0CAH
+ = 00CB			     1		op2	= 0CAH + 1
+						JP80	Z
+ CA00  9E		     1			sahf
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 39 - 1
+
+
+ CA01  74 08		     1			jZ	@f
+ CA03  8A 74 02		     2			mov	temp_h,ds:[PC80+2]
+ CA06  83 C6 03		     2			add	PC80,3
+ CA09  FF E2		     2			jmp	temp
+ CA0B			     1	@@:
+ CA0B  8B 34		     1			mov	PC80,ds:[PC80]
+ CA0D  8A 34		     2			mov	temp_h,ds:[PC80]
+ CA0F  46		     2			inc	PC80
+ CA10  FF E2		     2			jmp	temp
+
+				M1	0CCH
+ CB00  8B D5		     2			mov	temp,bp
+ CB02  BD 0007		     2			mov	bp,code_undef1
+ CB05  CB		     2			retf
+ = 00CC			     2			op2	= op2 + 1
+ = 00CD			     1		op2	= 0CCH + 1
+						CALL80	Z
+ CC00  83 C6 02		     1			add	PC80,2
+ CC03  9E		     1			sahf
+ CC04  74 05		     1			jZ	@f
+ CC06  8A 34		     2			mov	temp_h,ds:[PC80]
+ CC08  46		     2			inc	PC80
+ CC09  FF E2		     2			jmp	temp
+ CC0B			     1	@@:
+ CC0B  83 EF 02		     1			sub	SP80,2
+ CC0E  89 35		     1			mov	ds:[SP80],PC80
+ CC10  8B 74 FE		     1			mov	PC80,ds:[PC80-2]
+ CC13  8A 34		     2			mov	temp_h,ds:[PC80]
+ CC15  46		     2			inc	PC80
+ CC16  FF E2		     2			jmp	temp
+
+				M1	0CDH
+ = 00CE			     1		op2	= 0CDH + 1
+						CALL80
+ CD00  83 C6 02		     1			add	PC80,2
+ CD03  83 EF 02		     1			sub	SP80,2
+ CD06  89 35		     1			mov	ds:[SP80],PC80
+ CD08  8B 74 FE		     1			mov	PC80,ds:[PC80-2]
+ CD0B  8A 34		     2			mov	temp_h,ds:[PC80]
+ CD0D  46		     2			inc	PC80
+ CD0E  FF E2		     2			jmp	temp
+
+				M1	0CEH				;ADC	
+				A,n
+ = 00CF			     1		op2	= 0CEH + 1
+ CE00  9E					sahf
+ CE01  12 04					adc	A,ds:[PC80]
+ CE03  9F					lahf
+						fetch2
+ CE04  46		     1			inc	PC80
+ CE05  8A 34		     1			mov	temp_h,ds:[PC80]
+ CE07  46		     1			inc	PC80
+ CE08  FF E2		     1			jmp	temp
+
+				M1	0CFH
+ = 00D0			     1		op2	= 0CFH + 1
+						RST	08h
+ CF00  83 EF 02		     1			sub	SP80,2
+ CF03  89 35		     1			mov	ds:[SP80],PC80
+ CF05  BE 0008		     1			mov	PC80,08h
+ CF08  8A 34		     2			mov	temp_h,ds:[PC80]
+ CF0A  46		     2			inc	PC80
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 40 - 1
+
+
+ CF0B  FF E2		     2			jmp	temp
+
+				M1	0D0H
+ = 00D1			     1		op2	= 0D0H + 1
+						RET80	NC
+ D000  9E		     1			sahf
+ D001  73 05		     1			jNC	@f
+ D003  8A 34		     2			mov	temp_h,ds:[PC80]
+ D005  46		     2			inc	PC80
+ D006  FF E2		     2			jmp	temp
+ D008			     1	@@:
+ D008  8B 35		     1			mov	PC80,ds:[SP80]
+ D00A  83 C7 02		     1			add	SP80,2
+ D00D  8A 34		     2			mov	temp_h,ds:[PC80]
+ D00F  46		     2			inc	PC80
+ D010  FF E2		     2			jmp	temp
+
+				M1	0D1H
+ = 00D2			     1		op2	= 0D1H + 1
+						POP8	DE
+ D100  8B 2D		     1			mov	DE,ds:[SP80]
+ D102  83 C7 02		     1			add	SP80,2
+ D105  8A 34		     2			mov	temp_h,ds:[PC80]
+ D107  46		     2			inc	PC80
+ D108  FF E2		     2			jmp	temp
+
+				M1	0D2H
+ = 00D3			     1		op2	= 0D2H + 1
+						JP80	NC
+ D200  9E		     1			sahf
+ D201  73 08		     1			jNC	@f
+ D203  8A 74 02		     2			mov	temp_h,ds:[PC80+2]
+ D206  83 C6 03		     2			add	PC80,3
+ D209  FF E2		     2			jmp	temp
+ D20B			     1	@@:
+ D20B  8B 34		     1			mov	PC80,ds:[PC80]
+ D20D  8A 34		     2			mov	temp_h,ds:[PC80]
+ D20F  46		     2			inc	PC80
+ D210  FF E2		     2			jmp	temp
+
+				M1	0D3H				;OUT	
+				(n),A
+ = 00D4			     1		op2	= 0D3H + 1
+ D300  8B D5					mov	temp,bp
+ D302  BD 0002					mov	bp,code_OUT
+ D305  CB					retf
+
+				M1	0D4H
+ = 00D5			     1		op2	= 0D4H + 1
+						CALL80	NC
+ D400  83 C6 02		     1			add	PC80,2
+ D403  9E		     1			sahf
+ D404  73 05		     1			jNC	@f
+ D406  8A 34		     2			mov	temp_h,ds:[PC80]
+ D408  46		     2			inc	PC80
+ D409  FF E2		     2			jmp	temp
+ D40B			     1	@@:
+ D40B  83 EF 02		     1			sub	SP80,2
+ D40E  89 35		     1			mov	ds:[SP80],PC80
+ D410  8B 74 FE		     1			mov	PC80,ds:[PC80-2]
+ D413  8A 34		     2			mov	temp_h,ds:[PC80]
+ D415  46		     2			inc	PC80
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 41 - 1
+
+
+ D416  FF E2		     2			jmp	temp
+
+				M1	0D5H
+ = 00D6			     1		op2	= 0D5H + 1
+						PUSH8	DE
+ D500  83 EF 02		     1			sub	SP80,2
+ D503  89 2D		     1			mov	ds:[SP80],DE
+ D505  8A 34		     2			mov	temp_h,ds:[PC80]
+ D507  46		     2			inc	PC80
+ D508  FF E2		     2			jmp	temp
+
+				M1	0D6H				;SUB	
+				n
+ = 00D7			     1		op2	= 0D6H + 1
+ D600  2A 04					sub	A,ds:[PC80]
+ D602  9F					lahf
+						fetch2
+ D603  46		     1			inc	PC80
+ D604  8A 34		     1			mov	temp_h,ds:[PC80]
+ D606  46		     1			inc	PC80
+ D607  FF E2		     1			jmp	temp
+
+				M1	0D7H
+ = 00D8			     1		op2	= 0D7H + 1
+						RST	10h
+ D700  83 EF 02		     1			sub	SP80,2
+ D703  89 35		     1			mov	ds:[SP80],PC80
+ D705  BE 0010		     1			mov	PC80,10h
+ D708  8A 34		     2			mov	temp_h,ds:[PC80]
+ D70A  46		     2			inc	PC80
+ D70B  FF E2		     2			jmp	temp
+
+				M1	0D8H
+ = 00D9			     1		op2	= 0D8H + 1
+						RET80	C
+ D800  9E		     1			sahf
+ D801  72 05		     1			jC	@f
+ D803  8A 34		     2			mov	temp_h,ds:[PC80]
+ D805  46		     2			inc	PC80
+ D806  FF E2		     2			jmp	temp
+ D808			     1	@@:
+ D808  8B 35		     1			mov	PC80,ds:[SP80]
+ D80A  83 C7 02		     1			add	SP80,2
+ D80D  8A 34		     2			mov	temp_h,ds:[PC80]
+ D80F  46		     2			inc	PC80
+ D810  FF E2		     2			jmp	temp
+
+				M1	0DAH
+ D900  8B D5		     2			mov	temp,bp
+ D902  BD 0007		     2			mov	bp,code_undef1
+ D905  CB		     2			retf
+ = 00DA			     2			op2	= op2 + 1
+ = 00DB			     1		op2	= 0DAH + 1
+						JP80	C
+ DA00  9E		     1			sahf
+ DA01  72 08		     1			jC	@f
+ DA03  8A 74 02		     2			mov	temp_h,ds:[PC80+2]
+ DA06  83 C6 03		     2			add	PC80,3
+ DA09  FF E2		     2			jmp	temp
+ DA0B			     1	@@:
+ DA0B  8B 34		     1			mov	PC80,ds:[PC80]
+ DA0D  8A 34		     2			mov	temp_h,ds:[PC80]
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 42 - 1
+
+
+ DA0F  46		     2			inc	PC80
+ DA10  FF E2		     2			jmp	temp
+
+				M1	0DBH				;IN	
+				A,(n)
+ = 00DC			     1		op2	= 0DBH + 1
+ DB00  8B D5					mov	temp,bp
+ DB02  BD 0003					mov	bp,code_IN
+ DB05  CB					retf
+
+				M1	0DCH
+ = 00DD			     1		op2	= 0DCH + 1
+						CALL80	C
+ DC00  83 C6 02		     1			add	PC80,2
+ DC03  9E		     1			sahf
+ DC04  72 05		     1			jC	@f
+ DC06  8A 34		     2			mov	temp_h,ds:[PC80]
+ DC08  46		     2			inc	PC80
+ DC09  FF E2		     2			jmp	temp
+ DC0B			     1	@@:
+ DC0B  83 EF 02		     1			sub	SP80,2
+ DC0E  89 35		     1			mov	ds:[SP80],PC80
+ DC10  8B 74 FE		     1			mov	PC80,ds:[PC80-2]
+ DC13  8A 34		     2			mov	temp_h,ds:[PC80]
+ DC15  46		     2			inc	PC80
+ DC16  FF E2		     2			jmp	temp
+
+				M1	0DEH				;SBC	
+				A,n
+ DD00  8B D5		     2			mov	temp,bp
+ DD02  BD 0007		     2			mov	bp,code_undef1
+ DD05  CB		     2			retf
+ = 00DE			     2			op2	= op2 + 1
+ = 00DF			     1		op2	= 0DEH + 1
+ DE00  9E					sahf
+ DE01  1A 04					sbb	A,ds:[PC80]
+ DE03  9F					lahf
+						fetch2
+ DE04  46		     1			inc	PC80
+ DE05  8A 34		     1			mov	temp_h,ds:[PC80]
+ DE07  46		     1			inc	PC80
+ DE08  FF E2		     1			jmp	temp
+
+				M1	0DFH
+ = 00E0			     1		op2	= 0DFH + 1
+						RST	18h
+ DF00  83 EF 02		     1			sub	SP80,2
+ DF03  89 35		     1			mov	ds:[SP80],PC80
+ DF05  BE 0018		     1			mov	PC80,18h
+ DF08  8A 34		     2			mov	temp_h,ds:[PC80]
+ DF0A  46		     2			inc	PC80
+ DF0B  FF E2		     2			jmp	temp
+
+				M1	0E0H
+ = 00E1			     1		op2	= 0E0H + 1
+						RET80	PO
+ E000  9E		     1			sahf
+ E001  7B 05		     1			jPO	@f
+ E003  8A 34		     2			mov	temp_h,ds:[PC80]
+ E005  46		     2			inc	PC80
+ E006  FF E2		     2			jmp	temp
+ E008			     1	@@:
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 43 - 1
+
+
+ E008  8B 35		     1			mov	PC80,ds:[SP80]
+ E00A  83 C7 02		     1			add	SP80,2
+ E00D  8A 34		     2			mov	temp_h,ds:[PC80]
+ E00F  46		     2			inc	PC80
+ E010  FF E2		     2			jmp	temp
+
+				M1	0E1H
+ = 00E2			     1		op2	= 0E1H + 1
+						POP8	HL
+ E100  8B 1D		     1			mov	HL,ds:[SP80]
+ E102  83 C7 02		     1			add	SP80,2
+ E105  8A 34		     2			mov	temp_h,ds:[PC80]
+ E107  46		     2			inc	PC80
+ E108  FF E2		     2			jmp	temp
+
+				M1	0E2H
+ = 00E3			     1		op2	= 0E2H + 1
+						JP80	PO
+ E200  9E		     1			sahf
+ E201  7B 08		     1			jPO	@f
+ E203  8A 74 02		     2			mov	temp_h,ds:[PC80+2]
+ E206  83 C6 03		     2			add	PC80,3
+ E209  FF E2		     2			jmp	temp
+ E20B			     1	@@:
+ E20B  8B 34		     1			mov	PC80,ds:[PC80]
+ E20D  8A 34		     2			mov	temp_h,ds:[PC80]
+ E20F  46		     2			inc	PC80
+ E210  FF E2		     2			jmp	temp
+
+				M1	0E3H
+ = 00E4			     1		op2	= 0E3H + 1
+ E300  87 1D					xchg	HL,ds:[SP80]	;EX	
+				(SP),HL
+						fetch1
+ E302  8A 34		     1			mov	temp_h,ds:[PC80]
+ E304  46		     1			inc	PC80
+ E305  FF E2		     1			jmp	temp
+
+				M1	0E4H
+ = 00E5			     1		op2	= 0E4H + 1
+						CALL80	PO
+ E400  83 C6 02		     1			add	PC80,2
+ E403  9E		     1			sahf
+ E404  7B 05		     1			jPO	@f
+ E406  8A 34		     2			mov	temp_h,ds:[PC80]
+ E408  46		     2			inc	PC80
+ E409  FF E2		     2			jmp	temp
+ E40B			     1	@@:
+ E40B  83 EF 02		     1			sub	SP80,2
+ E40E  89 35		     1			mov	ds:[SP80],PC80
+ E410  8B 74 FE		     1			mov	PC80,ds:[PC80-2]
+ E413  8A 34		     2			mov	temp_h,ds:[PC80]
+ E415  46		     2			inc	PC80
+ E416  FF E2		     2			jmp	temp
+
+				M1	0E5H
+ = 00E6			     1		op2	= 0E5H + 1
+						PUSH8	HL
+ E500  83 EF 02		     1			sub	SP80,2
+ E503  89 1D		     1			mov	ds:[SP80],HL
+ E505  8A 34		     2			mov	temp_h,ds:[PC80]
+ E507  46		     2			inc	PC80
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 44 - 1
+
+
+ E508  FF E2		     2			jmp	temp
+
+				M1	0E6H				;AND	
+				n
+ = 00E7			     1		op2	= 0E6H + 1
+ E600  22 04					and	A,ds:[PC80]
+ E602  9F					lahf
+						fetch2
+ E603  46		     1			inc	PC80
+ E604  8A 34		     1			mov	temp_h,ds:[PC80]
+ E606  46		     1			inc	PC80
+ E607  FF E2		     1			jmp	temp
+
+				M1	0E7H
+ = 00E8			     1		op2	= 0E7H + 1
+						RST	20h
+ E700  83 EF 02		     1			sub	SP80,2
+ E703  89 35		     1			mov	ds:[SP80],PC80
+ E705  BE 0020		     1			mov	PC80,20h
+ E708  8A 34		     2			mov	temp_h,ds:[PC80]
+ E70A  46		     2			inc	PC80
+ E70B  FF E2		     2			jmp	temp
+
+				M1	0E8H
+ = 00E9			     1		op2	= 0E8H + 1
+						RET80	PE
+ E800  9E		     1			sahf
+ E801  7A 05		     1			jPE	@f
+ E803  8A 34		     2			mov	temp_h,ds:[PC80]
+ E805  46		     2			inc	PC80
+ E806  FF E2		     2			jmp	temp
+ E808			     1	@@:
+ E808  8B 35		     1			mov	PC80,ds:[SP80]
+ E80A  83 C7 02		     1			add	SP80,2
+ E80D  8A 34		     2			mov	temp_h,ds:[PC80]
+ E80F  46		     2			inc	PC80
+ E810  FF E2		     2			jmp	temp
+
+				M1	0E9H
+ = 00EA			     1		op2	= 0E9H + 1
+ E900  8B F3					mov	PC80,HL		;JP	
+				(HL)
+						fetch1
+ E902  8A 34		     1			mov	temp_h,ds:[PC80]
+ E904  46		     1			inc	PC80
+ E905  FF E2		     1			jmp	temp
+
+				M1	0EAH
+ = 00EB			     1		op2	= 0EAH + 1
+						JP80	PE
+ EA00  9E		     1			sahf
+ EA01  7A 08		     1			jPE	@f
+ EA03  8A 74 02		     2			mov	temp_h,ds:[PC80+2]
+ EA06  83 C6 03		     2			add	PC80,3
+ EA09  FF E2		     2			jmp	temp
+ EA0B			     1	@@:
+ EA0B  8B 34		     1			mov	PC80,ds:[PC80]
+ EA0D  8A 34		     2			mov	temp_h,ds:[PC80]
+ EA0F  46		     2			inc	PC80
+ EA10  FF E2		     2			jmp	temp
+
+				M1	0EBH
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 45 - 1
+
+
+ = 00EC			     1		op2	= 0EBH + 1
+ EB00  87 EB					xchg	DE,HL		;EX	
+				DE,HL
+						fetch1
+ EB02  8A 34		     1			mov	temp_h,ds:[PC80]
+ EB04  46		     1			inc	PC80
+ EB05  FF E2		     1			jmp	temp
+
+				M1	0ECH
+ = 00ED			     1		op2	= 0ECH + 1
+						CALL80	PE
+ EC00  83 C6 02		     1			add	PC80,2
+ EC03  9E		     1			sahf
+ EC04  7A 05		     1			jPE	@f
+ EC06  8A 34		     2			mov	temp_h,ds:[PC80]
+ EC08  46		     2			inc	PC80
+ EC09  FF E2		     2			jmp	temp
+ EC0B			     1	@@:
+ EC0B  83 EF 02		     1			sub	SP80,2
+ EC0E  89 35		     1			mov	ds:[SP80],PC80
+ EC10  8B 74 FE		     1			mov	PC80,ds:[PC80-2]
+ EC13  8A 34		     2			mov	temp_h,ds:[PC80]
+ EC15  46		     2			inc	PC80
+ EC16  FF E2		     2			jmp	temp
+
+				M1	0EEH				;XOR	
+				n
+ ED00  8B D5		     2			mov	temp,bp
+ ED02  BD 0007		     2			mov	bp,code_undef1
+ ED05  CB		     2			retf
+ = 00EE			     2			op2	= op2 + 1
+ = 00EF			     1		op2	= 0EEH + 1
+ EE00  32 04					xor	A,ds:[PC80]
+ EE02  9F					lahf
+						fetch2
+ EE03  46		     1			inc	PC80
+ EE04  8A 34		     1			mov	temp_h,ds:[PC80]
+ EE06  46		     1			inc	PC80
+ EE07  FF E2		     1			jmp	temp
+
+				M1	0EFH
+ = 00F0			     1		op2	= 0EFH + 1
+						RST	28h
+ EF00  83 EF 02		     1			sub	SP80,2
+ EF03  89 35		     1			mov	ds:[SP80],PC80
+ EF05  BE 0028		     1			mov	PC80,28h
+ EF08  8A 34		     2			mov	temp_h,ds:[PC80]
+ EF0A  46		     2			inc	PC80
+ EF0B  FF E2		     2			jmp	temp
+
+				M1	0F0H
+ = 00F1			     1		op2	= 0F0H + 1
+						RET80	ns		;RET	
+				P
+ F000  9E		     1			sahf
+ F001  79 05		     1			jns	@f
+ F003  8A 34		     2			mov	temp_h,ds:[PC80]
+ F005  46		     2			inc	PC80
+ F006  FF E2		     2			jmp	temp
+ F008			     1	@@:
+ F008  8B 35		     1			mov	PC80,ds:[SP80]
+ F00A  83 C7 02		     1			add	SP80,2
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 46 - 1
+
+
+ F00D  8A 34		     2			mov	temp_h,ds:[PC80]
+ F00F  46		     2			inc	PC80
+ F010  FF E2		     2			jmp	temp
+
+				M1	0F1H
+ = 00F2			     1		op2	= 0F1H + 1
+						POP8	AF
+ F100  8B 05		     1			mov	AF,ds:[SP80]
+ F102  86 E0		     1			xchg	ah,al
+ F104  83 C7 02		     1			add	SP80,2
+ F107  8A 34		     2			mov	temp_h,ds:[PC80]
+ F109  46		     2			inc	PC80
+ F10A  FF E2		     2			jmp	temp
+
+				M1	0F2H
+ = 00F3			     1		op2	= 0F2H + 1
+						JP80	ns		;JP	
+				P,nn
+ F200  9E		     1			sahf
+ F201  79 08		     1			jns	@f
+ F203  8A 74 02		     2			mov	temp_h,ds:[PC80+2]
+ F206  83 C6 03		     2			add	PC80,3
+ F209  FF E2		     2			jmp	temp
+ F20B			     1	@@:
+ F20B  8B 34		     1			mov	PC80,ds:[PC80]
+ F20D  8A 34		     2			mov	temp_h,ds:[PC80]
+ F20F  46		     2			inc	PC80
+ F210  FF E2		     2			jmp	temp
+
+				M1	0F3H
+ = 00F4			     1		op2	= 0F3H + 1
+				;		cli			;DI	
+				****
+						fetch1
+ F300  8A 34		     1			mov	temp_h,ds:[PC80]
+ F302  46		     1			inc	PC80
+ F303  FF E2		     1			jmp	temp
+
+				M1	0F4H
+ = 00F5			     1		op2	= 0F4H + 1
+						call80	ns		;CALL	
+				P,nn
+ F400  83 C6 02		     1			add	PC80,2
+ F403  9E		     1			sahf
+ F404  79 05		     1			jns	@f
+ F406  8A 34		     2			mov	temp_h,ds:[PC80]
+ F408  46		     2			inc	PC80
+ F409  FF E2		     2			jmp	temp
+ F40B			     1	@@:
+ F40B  83 EF 02		     1			sub	SP80,2
+ F40E  89 35		     1			mov	ds:[SP80],PC80
+ F410  8B 74 FE		     1			mov	PC80,ds:[PC80-2]
+ F413  8A 34		     2			mov	temp_h,ds:[PC80]
+ F415  46		     2			inc	PC80
+ F416  FF E2		     2			jmp	temp
+
+				M1	0F5H
+ = 00F6			     1		op2	= 0F5H + 1
+						PUSH8	AF
+ F500  83 EF 02		     1			sub	SP80,2
+ F503  86 E0		     1			xchg	ah,al
+ F505  89 05		     1			mov	ds:[SP80],AF
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 47 - 1
+
+
+ F507  86 E0		     1			xchg	ah,al
+ F509  8A 34		     2			mov	temp_h,ds:[PC80]
+ F50B  46		     2			inc	PC80
+ F50C  FF E2		     2			jmp	temp
+
+				M1	0F6H				;OR	
+				n
+ = 00F7			     1		op2	= 0F6H + 1
+ F600  0A 04					or	A,ds:[PC80]
+ F602  9F					lahf
+						fetch2
+ F603  46		     1			inc	PC80
+ F604  8A 34		     1			mov	temp_h,ds:[PC80]
+ F606  46		     1			inc	PC80
+ F607  FF E2		     1			jmp	temp
+
+				M1	0F7H
+ = 00F8			     1		op2	= 0F7H + 1
+						RST	30h
+ F700  83 EF 02		     1			sub	SP80,2
+ F703  89 35		     1			mov	ds:[SP80],PC80
+ F705  BE 0030		     1			mov	PC80,30h
+ F708  8A 34		     2			mov	temp_h,ds:[PC80]
+ F70A  46		     2			inc	PC80
+ F70B  FF E2		     2			jmp	temp
+
+				M1	0F8H
+ = 00F9			     1		op2	= 0F8H + 1
+						RET80	s		;RET	
+				M
+ F800  9E		     1			sahf
+ F801  78 05		     1			js	@f
+ F803  8A 34		     2			mov	temp_h,ds:[PC80]
+ F805  46		     2			inc	PC80
+ F806  FF E2		     2			jmp	temp
+ F808			     1	@@:
+ F808  8B 35		     1			mov	PC80,ds:[SP80]
+ F80A  83 C7 02		     1			add	SP80,2
+ F80D  8A 34		     2			mov	temp_h,ds:[PC80]
+ F80F  46		     2			inc	PC80
+ F810  FF E2		     2			jmp	temp
+
+				M1	0F9H
+ = 00FA			     1		op2	= 0F9H + 1
+						LD	SP80,HL		;LD	
+				SP,HL
+ F900  8B FB		     1			mov	SP80,HL
+ F902  8A 34		     2			mov	temp_h,ds:[PC80]
+ F904  46		     2			inc	PC80
+ F905  FF E2		     2			jmp	temp
+
+				M1	0FAH
+ = 00FB			     1		op2	= 0FAH + 1
+						JP80	s		;JP	
+				M,nn
+ FA00  9E		     1			sahf
+ FA01  78 08		     1			js	@f
+ FA03  8A 74 02		     2			mov	temp_h,ds:[PC80+2]
+ FA06  83 C6 03		     2			add	PC80,3
+ FA09  FF E2		     2			jmp	temp
+ FA0B			     1	@@:
+ FA0B  8B 34		     1			mov	PC80,ds:[PC80]
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 48 - 1
+
+
+ FA0D  8A 34		     2			mov	temp_h,ds:[PC80]
+ FA0F  46		     2			inc	PC80
+ FA10  FF E2		     2			jmp	temp
+
+				M1	0FBH				;EI	
+				****
+ = 00FC			     1		op2	= 0FBH + 1
+ FB00  FB					sti
+						fetch1
+ FB01  8A 34		     1			mov	temp_h,ds:[PC80]
+ FB03  46		     1			inc	PC80
+ FB04  FF E2		     1			jmp	temp
+
+				M1	0FCH
+ = 00FD			     1		op2	= 0FCH + 1
+						CALL80	s		;CALL	
+				M,nn
+ FC00  83 C6 02		     1			add	PC80,2
+ FC03  9E		     1			sahf
+ FC04  78 05		     1			js	@f
+ FC06  8A 34		     2			mov	temp_h,ds:[PC80]
+ FC08  46		     2			inc	PC80
+ FC09  FF E2		     2			jmp	temp
+ FC0B			     1	@@:
+ FC0B  83 EF 02		     1			sub	SP80,2
+ FC0E  89 35		     1			mov	ds:[SP80],PC80
+ FC10  8B 74 FE		     1			mov	PC80,ds:[PC80-2]
+ FC13  8A 34		     2			mov	temp_h,ds:[PC80]
+ FC15  46		     2			inc	PC80
+ FC16  FF E2		     2			jmp	temp
+
+				M1	0FEH				;CP	
+				n
+ FD00  8B D5		     2			mov	temp,bp
+ FD02  BD 0007		     2			mov	bp,code_undef1
+ FD05  CB		     2			retf
+ = 00FE			     2			op2	= op2 + 1
+ = 00FF			     1		op2	= 0FEH + 1
+ FE00  3A 04					cmp	A,ds:[PC80]
+ FE02  9F					lahf
+						fetch2
+ FE03  46		     1			inc	PC80
+ FE04  8A 34		     1			mov	temp_h,ds:[PC80]
+ FE06  46		     1			inc	PC80
+ FE07  FF E2		     1			jmp	temp
+
+				M1	0FFH
+ = 0100			     1		op2	= 0FFH + 1
+						RST	38h
+ FF00  83 EF 02		     1			sub	SP80,2
+ FF03  89 35		     1			mov	ds:[SP80],PC80
+ FF05  BE 0038		     1			mov	PC80,38h
+ FF08  8A 34		     2			mov	temp_h,ds:[PC80]
+ FF0A  46		     2			inc	PC80
+ FF0B  FF E2		     2			jmp	temp
+
+				;=============================================
+				===
+ FF0D  8C C8			exe_start:	mov	ax,cs
+ FF0F  8E D8					mov	ds,ax
+ FF11  BA 0005 R				mov	dx,offset exe_msg
+ FF14  B4 09					mov	ah,09h
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Page 49 - 1
+
+
+ FF16  CD 21					int	21h
+ FF18  B8 4C00					mov	ax,4c00h
+ FF1B  CD 21					int	21h
+
+ 0000						.data
+						.stack
+
+						end	exe_start
+ 
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Symbols 50 - 1
+
+
+
+
+Macros:
+
+                N a m e                 Type
+
+ADC8 . . . . . . . . . . . . . .	Proc
+ADD8 . . . . . . . . . . . . . .	Proc
+ADDHL  . . . . . . . . . . . . .	Proc
+ANA  . . . . . . . . . . . . . .	Proc
+CALL80 . . . . . . . . . . . . .	Proc
+CPA  . . . . . . . . . . . . . .	Proc
+DCR  . . . . . . . . . . . . . .	Proc
+DCX  . . . . . . . . . . . . . .	Proc
+INR  . . . . . . . . . . . . . .	Proc
+INX  . . . . . . . . . . . . . .	Proc
+JP80 . . . . . . . . . . . . . .	Proc
+LD . . . . . . . . . . . . . . .	Proc
+LXI  . . . . . . . . . . . . . .	Proc
+M1 . . . . . . . . . . . . . . .	Proc
+MVI  . . . . . . . . . . . . . .	Proc
+ORA  . . . . . . . . . . . . . .	Proc
+POP8 . . . . . . . . . . . . . .	Proc
+PUSH8  . . . . . . . . . . . . .	Proc
+RET80  . . . . . . . . . . . . .	Proc
+RST  . . . . . . . . . . . . . .	Proc
+SBC8 . . . . . . . . . . . . . .	Proc
+SUB8 . . . . . . . . . . . . . .	Proc
+XRA  . . . . . . . . . . . . . .	Proc
+fetch1 . . . . . . . . . . . . .	Proc
+fetch2 . . . . . . . . . . . . .	Proc
+fetch3 . . . . . . . . . . . . .	Proc
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Symbols 51 - 1
+
+
+
+
+Segments and Groups:
+
+                N a m e                 Size     Length   Align   Combine Clas
+s
+
+DGROUP . . . . . . . . . . . . .	GROUP
+_DATA  . . . . . . . . . . . . .	16 Bit	 0000	  Word	  Public  'DATA'
+					  
+STACK  . . . . . . . . . . . . .	16 Bit	 0400	  Para	  Stack	  'STAC
+					K'  
+_TEXT  . . . . . . . . . . . . .	16 Bit	 FF1D	  Word	  Public  'CODE'
+					  
+Microsoft (R) Macro Assembler Version 6.00AD    	    08/22/24 19:58:34
+8080em.asm						     Symbols 52 - 1
+
+
+
+
+Symbols:
+
+                N a m e                 Type     Value    Attr
+
+@CodeSize  . . . . . . . . . . .	Number	 0000h	 
+@DataSize  . . . . . . . . . . .	Number	 0000h	 
+@Interface . . . . . . . . . . .	Number	 0000h	 
+@Model . . . . . . . . . . . . .	Number	 0002h	 
+@code  . . . . . . . . . . . . .	Text   	 _TEXT
+@data  . . . . . . . . . . . . .	Text   	 DGROUP
+@fardata?  . . . . . . . . . . .	Text   	 FAR_BSS
+@fardata . . . . . . . . . . . .	Text   	 FAR_DATA
+@stack . . . . . . . . . . . . .	Text   	 DGROUP
+AF . . . . . . . . . . . . . . .	Text   	 ax
+A  . . . . . . . . . . . . . . .	Text   	 al
+BC . . . . . . . . . . . . . . .	Text   	 cx
+B  . . . . . . . . . . . . . . .	Text   	 ch
+C_reg  . . . . . . . . . . . . .	Text   	 cl
+DE . . . . . . . . . . . . . . .	Text   	 bp
+D  . . . . . . . . . . . . . . .	Text   	 dh
+E  . . . . . . . . . . . . . . .	Text   	 dl
+HL . . . . . . . . . . . . . . .	Text   	 bx
+H  . . . . . . . . . . . . . . .	Text   	 bh
+L  . . . . . . . . . . . . . . .	Text   	 bl
+M  . . . . . . . . . . . . . . .	Text   	 byte ptr ds:[HL]
+PC80 . . . . . . . . . . . . . .	Text   	 si
+SP80 . . . . . . . . . . . . . .	Text   	 di
+code_HLT . . . . . . . . . . . .	Number	 0001h	 
+code_IN  . . . . . . . . . . . .	Number	 0003h	 
+code_OUT . . . . . . . . . . . .	Number	 0002h	 
+code_undef1  . . . . . . . . . .	Number	 0007h	 
+entry  . . . . . . . . . . . . .	L Near	 00E0	  _TEXT	
+exe_msg  . . . . . . . . . . . .	Byte	 0005	  _TEXT	
+exe_start  . . . . . . . . . . .	L Near	 FF0D	  _TEXT	
+no_op  . . . . . . . . . . . . .	L Near	 0000	  _TEXT	
+op2  . . . . . . . . . . . . . .	Number	 0100h	 
+temp_h . . . . . . . . . . . . .	Text   	 dh
+temp_l . . . . . . . . . . . . .	Text   	 dl
+temp . . . . . . . . . . . . . .	Text   	 dx
+
+	   0 Warnings
+	   0 Errors
